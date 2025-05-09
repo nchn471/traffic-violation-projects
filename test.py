@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 def is_red(frame, threshold=0.008):
-    # Chuyển đổi frame sang không gian màu HSV
+
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     # Xác định ngưỡng màu đỏ trong không gian HSV
     lower_red1 = np.array([0, 50, 50])
