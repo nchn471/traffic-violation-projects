@@ -1,0 +1,57 @@
+services:
+
+  postgres:
+    image: postgres:17
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    env_file:
+      - .env
+    networks:
+      - violation-net
+
+  minio:
+    image: "minio/minio"
+    container_name: minio
+    hostname: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio:/data
+    env_file:
+      - .env
+    networks:
+      - violation-net
+
+  mc:
+    image: minio/mc
+    container_name: mc
+    hostname: mc
+    env_file:
+      - .env
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc config host add minio http://minio:9000 minio minio123)
+      do
+        echo '...waiting...' && sleep 1;
+      done;
+      /usr/bin/mc mb minio/violations;
+      /usr/bin/mc policy set public minio/violations;
+      exit 0;
+      "
+    depends_on:
+      - minio
+    networks:
+      - violation-net
+
+volumes:
+  postgres:
+  minio:
+
+networks:
+  violation-net:
+    driver: bridge

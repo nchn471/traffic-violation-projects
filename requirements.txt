@@ -6,4 +6,7 @@ torchtext
 deep-sort-realtime
 ultralytics
 websockets==15.0.1
-sqlite3
+SQLAlchemy
+psycopg2
+alembic
+dotenv
