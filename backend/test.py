@@ -1,57 +1,45 @@
 import cv2
 import numpy as np
+polygon_points = []
+drawing = False
 
-def is_red(frame, threshold=0.008):
+def mouse_callback(event, x, y, flags, param):
+    global polygon_points, drawing
+    if event == cv2.EVENT_LBUTTONDOWN:
+        polygon_points.append((x, y))
 
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    # Xác định ngưỡng màu đỏ trong không gian HSV
-    lower_red1 = np.array([0, 50, 50])
-    upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([170, 50, 50])
-    upper_red2 = np.array([180, 255, 255])
-    # Tạo mask cho màu đỏ
-    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-    mask = mask1 | mask2
-    # Tính tỷ lệ pixel màu đỏ
-    red_ratio = np.sum(mask) / (mask.size)
-    return red_ratio > threshold
+def draw_polygon(frame, points):
+    for pt in points:
+        cv2.circle(frame, pt, 5, (0, 255, 0), -1)
+    if len(points) > 1:
+        cv2.polylines(frame, [np.array(points)], isClosed=True, color=(0, 255, 0), thickness=2)
 
-# Đường dện đến video
-video_path = r'backend/video/La-Khê-Hà_Đông.mp4'
-# Vùng ROI cho đèn
-x1, y1, x2, y2 = 650, 5, 700, 50
-
-# Tạo đối tượng VideoCapture
-cap = cv2.VideoCapture(video_path)
-
-if not cap.isOpened():
-    print("Error opening video file")
-    exit()
-
-while True:
+if __name__ == "__main__":
+    cap = cv2.VideoCapture("backend/video/La-Khê-Hà_Đông.mp4")
     ret, frame = cap.read()
+    cap.release()
+
     if not ret:
-        break
-    
-    # Cắt ROI
-    roi = frame[y1:y2, x1:x2]
-    
-    # Kiểm tra màu đỏ trong ROI
-    light_status = "Red Light" if is_red(roi) else "Green Light"
-    print(f"{light_status} detected!")
-    light_color = (0, 0, 255) if "Red" in light_status else (0, 255, 0)
-    cv2.rectangle(frame, (x1, y1), (x2, y2), light_color, 2)
-    
-    # Vẽ trạng thái đèn lên góc trên bên trái của frame
-    cv2.putText(frame, light_status, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, light_color, 2)
+        print("Không đọc được frame.")
+        exit()
 
-    # Hiển thị frame
-    cv2.imshow('Frame', frame)
+    cv2.namedWindow("Select ROI Polygon")
+    cv2.setMouseCallback("Select ROI Polygon", mouse_callback)
 
-    # Nhấn 'q' để thoát
-    if cv2.waitKey(25) & 0xFF == ord('q'):
-        break
+    while True:
+        display_frame = frame.copy()
+        draw_polygon(display_frame, polygon_points)
+        cv2.imshow("Select ROI Polygon", display_frame)
+        key = cv2.waitKey(1)
 
-cap.release()
-cv2.destroyAllWindows()
+        if key == ord('r'):
+            polygon_points.clear()  # reset
+        elif key == 13:  # Enter
+            break
+        elif key == 27:  # ESC
+            polygon_points.clear()
+            break
+
+    cv2.destroyAllWindows()
+    print("Polygon coordinates:", polygon_points)
+

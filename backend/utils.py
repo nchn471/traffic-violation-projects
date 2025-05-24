@@ -14,22 +14,24 @@ def xyxy2xywh(x):
     y[:, 3] = x[:, 3] - x[:, 1]  # height
     return y
 
-# Function to detect if a frame is red
-def is_red(frame, threshold=0.008, tich_luy_hien_tai=0, tich_luy=3):
+
+def is_red(frame, threshold = 0.008):
+
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    lower_red1 = np.array([0, 70, 50])
+
+    lower_red1 = np.array([0, 50, 50])
     upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([170, 70, 50])
+    lower_red2 = np.array([170, 50, 50])
     upper_red2 = np.array([180, 255, 255])
+
     mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
     mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-    red_mask = mask1 | mask2
-    red_ratio = np.sum(red_mask) / red_mask.size
+    mask = mask1 | mask2
 
-    if red_ratio > threshold:
-        return True, tich_luy_hien_tai + 1, None
-    else:
-        return False, tich_luy_hien_tai, None
+    red_ratio = np.sum(mask) / (mask.size)
+    return red_ratio > threshold
+
+
 
 def save_violation_data(track_id, label, image_path, timestamp):
     conn = sqlite3.connect('violations.db')

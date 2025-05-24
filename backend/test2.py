@@ -1,55 +1,70 @@
-import os
 import cv2
+from detectors.vehicle_detector import VehicleDetector
+from detectors.light_detector import LightDetector
+from detectors.helmet_detector import HelmetDetector
+from detectors.lane_detector import LaneDetector
+from detectors.license_plate_detector import LicensePlateDetector
+
+from core.frame_processor import FrameProcessor
 import json
-from ultralytics import YOLO
-from deep_sort_realtime.deepsort_tracker import DeepSort
+# Tham số cấu hình
+params = {
+    "roi": [(73, 718), (342, 330), (1061, 323), (1076, 331), (1019, 394), (1009, 453), (1026, 509), (1052, 572), (1096, 649), (1141, 717), (1141, 717)],  
+    # "roi" : [(2, 957), (0, 459), (67, 356), (632, 334), (869, 359), (1272, 610), (1294, 662), (1417, 801), (1596, 935), (1598, 957), (1598, 957)],
+    # "light_roi" : [(546, 12), (542, 72), (613, 73), (607, 13)],
+    "stop_line" :  [(154, 566), (1066, 541)],
+    "light_roi": [(650, 5), (700, 5), (700, 50), (650, 50)],
+    "detection_type": "lp",  
+    "lanes": [
+        {
+            "id": 1,
+            "polygon": [(76, 717), (274, 417), (543, 422), (492, 719)],
+            "allow_labels": ["car", "truck"]
+        },
+        {
+            "id": 2,
+            "polygon": [(492, 719),(543, 422),  (758, 440), (790, 717)],
+            "allow_labels": ["motorcycle", "bicycle"]
+        },
+        {
+            "id": 3,
+            "polygon": [(790, 717),(758, 440),  (1009, 429), (1172, 719)],
+            "allow_labels": ["car", "motorcycle", "truck", "bicycle"]
+        }
+    ]
+} 
+# Load model
+vehicle_detector = VehicleDetector('backend/model/vehicle.pt')
+light_detector = LightDetector('backend/model/vehicle.pt', params)
+helmet_detector = HelmetDetector('backend/model/vehicle.pt','backend/model/best_helmet_end.pt')
+lane_detector = LaneDetector('backend/model/vehicle.pt', params)
+lp_detector = LicensePlateDetector('backend/model/lp_yolo11_best.pt', 'backend/model/lp_yolo11_best.pt')
+# Lấy detector phù hợp với detection_type
+detectors = {
+    "vehicle": vehicle_detector,
+    "light": light_detector,
+    "helmet": helmet_detector,
+    "lane": lane_detector,
+    "lp" : lp_detector
+}
+selected_detector = detectors[params["detection_type"]]
 
-# Config
-VIDEO_PATH = 'backend/video/La-Khê-Hà_Đông.mp4'
-MODEL_PATH_VEHICLE = 'backend/model/vehicle.pt'
-MODEL_PATH_HELMET = 'backend/model/best_helmet_end.pt'
+# Tạo FrameProcessor
+frame_processor = FrameProcessor(selected_detector, params)
 
-model_vehicle = YOLO(MODEL_PATH_VEHICLE)
-model_helmet = YOLO(MODEL_PATH_HELMET)
-track_vehicle = DeepSort(max_age=30)
+# Mở video
+cap = cv2.VideoCapture('backend/video/test.MOV')
 
-def test_video(video_path: str, detection_type: str = 'helmet', roi_x1: int = 100, roi_y1: int = 350, roi_x2: int = 1150, roi_y2: int = 750):
-    cap = cv2.VideoCapture(video_path)
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
 
-        roi = frame[roi_y1:roi_y2, roi_x1:roi_x2]
+    processed_frame = frame_processor.process(frame)
 
-        if detection_type in ['vehicle', 'helmet']:
-            detect_vehicle = []
-            results_vehicle = model_vehicle.predict(source=roi, imgsz=320, conf=0.3, iou=0.4)[0]
-            for box in results_vehicle.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                conf = box.conf.item()
-                cls = int(box.cls.item())
-                detect_vehicle.append([[x1, y1, x2 - x1, y2 - y1], conf, cls])
+    cv2.imshow('Detection', processed_frame)
+    if cv2.waitKey(1) & 0xFF == 27:  # ESC để thoát
+        break
 
-            current_tracks = track_vehicle.update_tracks(detect_vehicle, frame=roi)
-
-            for track in current_tracks:
-                if not (track.is_confirmed() and track.det_conf):
-                    continue
-                x1, y1, x2, y2 = list(map(int, track.to_ltrb()))
-                label = model_vehicle.names[int(track.det_class)]
-                cv2.rectangle(roi, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(roi, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-
-        frame[roi_y1:roi_y2, roi_x1:roi_x2] = roi
-        cv2.rectangle(frame, (roi_x1, roi_y1), (roi_x2, roi_y2), (255, 0, 0), 2)
-
-        cv2.imshow('Detection Test', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-
-if __name__ == "__main__":
-    test_video(VIDEO_PATH, detection_type='helmet')
+cap.release()
+cv2.destroyAllWindows()

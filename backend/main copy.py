@@ -65,9 +65,8 @@ def handle_vehicle_and_helmet_detection(roi, params):
         if params['detection_type'] == 'helmet':
             handle_helmet_detection(roi, track)
 
-
 def detect_track_objects(roi, model, tracker):
-    results = model.predict(source=roi, imgsz=320, conf=0.3, iou=0.4)[0]
+    results = model.predict(source=roi, imgsz=320, conf=0.5, iou=0.4)[0]
     detections = []
     for box in results.boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
@@ -112,94 +111,126 @@ def handle_helmet_detection(roi, track):
 
         color = GREEN_BGR if label == "Helmet" else RED_BGR
         text = f"{label}: {conf:.2f}"
-        draw_bounding_box(roi,x1+hx1,y1+hy1,x1+hx2,y1+hy2,color,text, font_scale=0.25,thickness=1)
+        draw_bounding_box(roi, x1 + hx1, y1 + hy1, x1 + hx2, y1 + hy2, color, text, font_scale=0.25, thickness=1)
         if conf > 0.65 and label == "Without Helmet":
             pass
             #TODO: violation recorder
 
-
-
 def handle_lane_detection(roi, frame, params):
-    midpoint_x = params['roi_x1'] + (params['roi_x2'] - params['roi_x1']) // 2
-    cv2.line(frame, (midpoint_x, params['roi_y1']), (midpoint_x, params['roi_y2']), (0, 0, 255), 2)
-    results = model_vehicle.predict(source=roi, imgsz=320, conf=0.3, iou=0.4)[0]
-    for box in results.boxes:
-        check_and_draw_lane_violation(roi, frame, box, params, midpoint_x)
 
-def check_and_draw_lane_violation(roi, frame, box, params, midpoint_x):
-    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-    vehicle_center_x = (x1 + x2) // 2
-    vehicle_label = model_vehicle.names[int(box.cls.item())]
-    lane = "Left" if vehicle_label in params['left_labels'] else "Right" if vehicle_label in params['right_labels'] else None
-    if lane and ((lane == "Left" and vehicle_center_x > midpoint_x) or (lane == "Right" and vehicle_center_x < midpoint_x)):
-        color = (0, 0, 255)
-        cv2.rectangle(frame, (params['roi_x1'] + x1, params['roi_y1'] + y1), (params['roi_x1'] + x2, params['roi_y1'] + y2), color, 2)
-        cv2.putText(frame, f"{vehicle_label} - Lane Violation", (params['roi_x1'] + x1, params['roi_y1'] + y1 - 10), cv2.FONT_HERSHEY_TRIPLEX, 0.5, color, 2)
-        save_violation_image(frame, "Lane Violation")
+    midpoint_x = params['roi_x1'] + (params['roi_x2'] - params['roi_x1']) // 2
+    cv2.line(frame, (midpoint_x, params['roi_y1']), (midpoint_x, params['roi_y2']), RED_BGR, 2)
+
+    results = model_vehicle.predict(source=roi, imgsz=320, conf=0.3, iou=0.4)[0]
+    results = model_vehicle.predict(roi, conf=0.2, verbose=False)[0]
+
+    for box in results.boxes:
+        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+        vehicle_center_x = (x1 + x2) // 2
+        label_idx = int(box.cls.item())
+        vehicle_label = model_vehicle.names[label_idx]
+
+        # Xác định làn
+        lane = None
+        if vehicle_label in params['left_labels']:
+            lane = "Left"
+        elif vehicle_label in params['right_labels']:
+            lane = "Right"
+
+        # Kiểm tra vi phạm làn
+        if lane:
+            is_violation = (
+                (lane == "Left" and vehicle_center_x > midpoint_x) or
+                (lane == "Right" and vehicle_center_x < midpoint_x)
+            )
+            if is_violation:
+                global_x1 = params['roi_x1'] + x1
+                global_y1 = params['roi_y1'] + y1
+                global_x2 = params['roi_x1'] + x2
+                global_y2 = params['roi_y1'] + y2
+
+                draw_bounding_box(
+                    roi=frame,
+                    x1=global_x1,
+                    y1=global_y1,
+                    x2=global_x2,
+                    y2=global_y2,
+                    color=RED_BGR,
+                    label=f"{vehicle_label} - Lane Violation",
+                    font_scale=0.5,
+                    thickness=2
+                )
+                #TODO: record violation
 
 def handle_light_detection(roi, frame, params):
-    tich_luy = 0
-    state_all = {}
-    ok = {}
+    track_states = {}
+    violation_status = {}
     y_line = params['y_line']
     roi_y1 = params['roi_y1']
     y_line_buffer = 30
-    light_frame = frame[params['light_roi_x1']:params['light_roi_x2'], params['light_roi_y1']:params['light_roi_y2']]
-    red, tich_luy, _ = is_red(light_frame, tich_luy_hien_tai=tich_luy)
-    text = 'RED' if red else 'GREEN'
-    light_color = (0, 0, 255) if red else (0, 255, 0)
 
-    cv2.putText(frame, f"Light: {text}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, light_color, 2)
-    cv2.rectangle(frame, (params['light_roi_x1'], params['light_roi_y1']), (params['light_roi_x2'], params['light_roi_y2']), (0, 255, 255), 2)
-    cv2.line(frame, (0, y_line), (frame.shape[1], y_line), (0, 255, 255), 2)
+    light_roi = frame[params['light_roi_y1']:params[ 'light_roi_y2'], params['light_roi_x1']:params['light_roi_x2']]
+    is_red_light = is_red(light_roi)
+    light_label = 'RED' if is_red_light else 'GREEN'
+    light_color = RED_BGR if is_red_light else GREEN_BGR
 
-    result = model_vehicle.predict(roi, conf=0.35, verbose=False)
-    if len(result):
-        result = result[0]
-        detect = []
-        for box in result.boxes:
-            x1, y1, x2, y2 = list(map(int, box.xyxy[0]))
-            conf = box.conf.item()
-            cls = int(box.cls.item())
-            detect.append([[x1, y1, x2 - x1, y2 - y1], conf, cls])
+    cv2.putText(frame, f"Light: {light_label}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, light_color, 2)
+    cv2.rectangle(frame,
+                  (params['light_roi_x1'], params['light_roi_y1']),
+                  (params['light_roi_x2'], params['light_roi_y2']),
+                  light_color, 2)
+    cv2.line(frame, (params['roi_x1'], y_line), (params['roi_x2'], y_line), (0, 255, 255), 2)
 
-        tracks = track_light.update_tracks(detect, frame=roi)
-        for track in tracks:
-            if track.is_confirmed() and track.det_conf:
-                x1, y1, x2, y2 = list(map(int, track.to_ltrb()))
-                yc = roi_y1 + (y1 + (y2 - y1) // 2)
-                track_id = track.track_id
-                is_ok = ok.get(track_id, None)
-                label = None
+    results = model_vehicle.predict(roi, conf=0.2, verbose=False)[0]
+    if not results:
+        return
 
-                if is_ok:
-                    label = "k vuot" if ok[track_id] == 2 else "vuot"
+    detections = []
+    for box in results.boxes:
+        x1, y1, x2, y2 = map(int, box.xyxy[0])
+        conf = box.conf.item()
+        cls = int(box.cls.item())
+        detections.append([[x1, y1, x2 - x1, y2 - y1], conf, cls])
+
+    tracks = track_light.update_tracks(detections, frame=roi)
+    for track in tracks:
+        if not track.is_confirmed() or not track.det_conf:
+            continue
+
+        x1, y1, x2, y2 = map(int, track.to_ltrb())
+        center_y = roi_y1 + (y1 + (y2 - y1) // 2)
+        track_id = track.track_id
+        status = violation_status.get(track_id)
+        label = None
+
+        if status is not None:
+            label = "No Violation" if status == 2 else "Red Light Violation"
+        else:
+            initial_state = track_states.get(track_id)
+            if initial_state is None:
+                if center_y > (y_line + y_line_buffer):
+                    violation_status[track_id] = 2
+                    label = "No Violation"
+                elif center_y < (y_line - y_line_buffer) and is_red_light:
+                    violation_status[track_id] = 1
+                    label = "Red Light Violation"
                 else:
-                    state = state_all.get(track_id)
-                    if state is None:
-                        if yc > (y_line + y_line_buffer):
-                            ok[track_id] = 2
-                            label = "k vuot"
-                        elif yc < (y_line - y_line_buffer) and red:
-                            ok[track_id] = 1
-                            label = "vuot"
-                        else:
-                            state_all[track_id] = red
-                    else:
-                        if yc > (y_line + y_line_buffer):
-                            ok[track_id] = 1 if state_all[track_id] else 2
-                            label = "k vuot" if ok[track_id] == 2 else "vuot"
-                        elif yc < (y_line - y_line_buffer) and red:
-                            ok[track_id] = 1
-                            label = "vuot"
-                        else:
-                            state_all[track_id] = red
+                    track_states[track_id] = is_red_light
+            else:
+                if center_y > (y_line + y_line_buffer):
+                    violation_status[track_id] = 1 if initial_state else 2
+                    label = "Red Light Violation" if violation_status[track_id] == 1 else "No Violation"
+                elif center_y < (y_line - y_line_buffer) and is_red_light:
+                    violation_status[track_id] = 1
+                    label = "Red Light Violation"
+                else:
+                    track_states[track_id] = is_red_light
 
-                if label:
-                    color = (0, 0, 255) if label == 'vuot' else (0, 255, 0)
-                    cv2.rectangle(roi, (x1, y1), (x2, y2), color, 2)
-                    cv2.rectangle(roi, (x1 - 1, y1 - 20), (x1 + len(label) * 12, y1), color, -1)
-                    cv2.putText(roi, label, (x1 + 5, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        if label:
+            color = RED_BGR if label == "Red Light Violation" else GREEN_BGR
+            draw_bounding_box(roi, x1, y1, x2, y2, color=color, label=label)
+            #TODO violation record
+
 
 def save_violation_image(image, violation_type):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
