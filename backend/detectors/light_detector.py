@@ -1,9 +1,6 @@
-# core/light_detector.py
-from core.base_detector import BaseDetector
-from core.tracker import Tracker
-from ultralytics import YOLO
-import numpy as np
 import cv2
+import numpy as np
+from .license_plate_detector import LicensePlateDetector
 
 def is_red(frame, light_roi, threshold=0.008):
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
@@ -24,61 +21,54 @@ def is_red(frame, light_roi, threshold=0.008):
     return red_ratio > threshold
 
 
-class LightDetector(BaseDetector):
-    def __init__(self, model_path, params):
-        super().__init__(params)
-        self.tracker = Tracker(max_age=30)
-        self.model = self.load_model(model_path)
+class LightDetector(LicensePlateDetector):
+    def __init__(self, lp__path, ocr_path, vehicle_path, params):
+        super().__init__(lp__path, ocr_path, params)
+        self.model = self.load_model(vehicle_path)
         self.track_states = {}
         self.violation_status = {}
-        
-    def detect(self, roi, frame):
-        detection_results = self.model.predict(source=roi, conf=0.2, verbose=False)[0]
+        self.violation_ids = set()
 
-        # Check light color
+    def detect(self, roi, frame):
+        results = self.model.track(
+            source=roi,
+            conf=0.3,
+            tracker="bytetrack.yaml",
+            imgsz=320,
+            persist=True,
+            stream=False,
+            verbose=False
+        )[0]    
+        original_frame = np.copy(frame)
         light_roi = self.params['light_roi']
         is_red_light = is_red(frame, light_roi)
         light_label = 'RED' if is_red_light else 'GREEN'
         light_color = self.RED_BGR if is_red_light else self.GREEN_BGR
 
-        # Draw light ROI
         cv2.polylines(frame, [np.array(light_roi, dtype=np.int32)], True, light_color, 2)
         cv2.putText(frame, f"Light: {light_label}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, light_color, 2)
 
-        # Draw stop line
         stop_line = self.params['stop_line']
         cv2.line(frame, stop_line[0], stop_line[1], self.YELLOW_BGR, 2)
         y_line = (stop_line[0][1] + stop_line[1][1]) // 2
-        # _, width = frame.shape[:2]
-        # cv2.line(frame, (0, y_line), (width, y_line), self.YELLOW_BGR, 2)
         y_buffer = 30
 
-        # Prepare detections
-        detections = []
-        for box in detection_results.boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            conf = box.conf.item()
-            cls = int(box.cls.item())
-            detections.append([[x1, y1, x2 - x1, y2 - y1], conf, cls])
 
-        tracks = self.tracker.update(detections, frame=roi)
-
-        for track in tracks:
-            if not track.is_confirmed() or not track.det_conf:
+        for box in results.boxes:
+            if box.id is None:
                 continue
-            x1, y1, x2, y2 = map(int, track.to_ltrb())
-            center_y = (y1 + (y2 - y1) // 2)  # hoặc center_y = (y1 + y2) // 2
 
-            # cv2.line(frame, (0, center_y), (width, center_y), self.BLUE_BGR, 2)
-            
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            track_id = int(box.id[0])
+            cls_id = int(box.cls[0])
+            vehicle_type = self.model.names[cls_id]
+            center_y = (y1 + y2) // 2
 
-            track_id = track.track_id
             status = self.violation_status.get(track_id, None)
             VIOLATION_LABEL = 'Red Light Violation'
             NO_VIOLATION_LABEL = 'No Violation'
             label = None
             
-
             if status:
                 label = VIOLATION_LABEL if status == True else NO_VIOLATION_LABEL
             else:
@@ -105,3 +95,27 @@ class LightDetector(BaseDetector):
 
             color = self.RED_BGR if label == VIOLATION_LABEL else self.GREEN_BGR
             self.draw_bounding_box(frame, x1, y1, x2, y2, color=color, label=label)
+
+            if label == VIOLATION_LABEL and track_id not in self.violation_ids:
+                self.violation_ids.add(track_id)
+
+
+                frame_copy = np.copy(original_frame)
+                vehicle_img = frame_copy[y1:y2, x1:x2]
+
+                self.draw_bounding_box(frame_copy, x1, y1, x2, y2, color=color, label=label)
+
+                lp_img, lp_text = self.lp_recognition(vehicle_img)
+
+                violation_type = "red_light_violation"
+                location = self.params.get("location")
+
+                self.violation_recorder.save_violation_snapshot(
+                    vehicle_type,
+                    violation_type,
+                    location,
+                    frame_copy,
+                    vehicle_img,
+                    lp_img,
+                    lp_text
+                )

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Render video from base64 frames</title>
+<style>
+  canvas {
+    border: 1px solid black;
+    width: 640px;
+    height: 480px;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="videoCanvas" width="1920" height="1080"></canvas>
+
+<script>
+  const canvas = document.getElementById('videoCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const ws = new WebSocket("ws://localhost:8000/ws/camera");
+
+  ws.onopen = () => {
+    console.log("WebSocket connected");
+  };
+
+  ws.onmessage = (event) => {
+    // Giả sử server gửi thẳng base64 string ảnh jpeg
+    const base64Image = event.data;
+
+    const img = new Image();
+    img.onload = () => {
+      // Vẽ ảnh lên canvas
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    };
+    img.src = "data:image/jpeg;base64," + base64Image;
+  };
+
+  ws.onclose = () => {
+    console.log("WebSocket disconnected");
+  };
+</script>
+
+</body>
+</html>
