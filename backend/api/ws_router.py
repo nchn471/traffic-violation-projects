@@ -4,28 +4,27 @@ import base64
 import asyncio
 import uuid
 import json
+import os
 
 from storage.minio_manager import MinIOManager
-from kafka_handlers.kafka_producer import publish_message
-from kafka import KafkaConsumer
+from kafka_handlers.kafka_producer import publish_message  # cần đảm bảo đã dùng confluent-kafka ở đây
+from confluent_kafka import Consumer
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 
-consumer = KafkaConsumer(
-    'processed-frames',
-    bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-    value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-    auto_offset_reset='latest',
-    group_id="websocket-group",
-    enable_auto_commit=True
-)
+# --- Tạo consumer với confluent-kafka ---
+consumer_conf = {
+    'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
+    'group.id': 'websocket-group',
+    'auto.offset.reset': 'latest',
+}
+consumer = Consumer(consumer_conf)
+consumer.subscribe(['processed-frames'])
 
 ws_router = APIRouter()
-
 
 params = {
     "video": "videos/La-Khê-Hà_Đông.mp4",
@@ -52,6 +51,7 @@ params = {
         }
     ]
 }
+
 @ws_router.websocket("/ws/camera")
 async def video_websocket(websocket: WebSocket):
     await websocket.accept()
@@ -78,14 +78,27 @@ async def video_websocket(websocket: WebSocket):
             }
             publish_message(data=message, topic="raw-frames", key=session_id)
 
-            for msg in consumer:
-                data = msg.value
+            # Poll Kafka for new messages
+            while True:
+                msg = consumer.poll(1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    print(f"Consumer error: {msg.error()}")
+                    continue
+
+                try:
+                    data = json.loads(msg.value().decode("utf-8"))
+                except Exception as e:
+                    print(f"Failed to decode message: {e}")
+                    continue
+
                 if data.get("session_id") == session_id:
-                    await websocket.send_text(data["processed_frame"])  
+                    await websocket.send_text(data["processed_frame"])
                     break
 
             await asyncio.sleep(0.03)
-            
+
     except WebSocketDisconnect:
         print("Client disconnected.")
     finally:

@@ -1,0 +1,47 @@
+name: Build & Push Multiple Services
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧾 Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: 🔐 Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: 🏷️ Set tags
+        id: meta
+        run: |
+          COMMIT_TAG=sha-${GITHUB_SHA::7}
+          echo "TAG=$COMMIT_TAG" >> $GITHUB_ENV
+          echo "LATEST=latest" >> $GITHUB_ENV
+          echo "USERNAME=${{ secrets.DOCKER_USERNAME }}" >> $GITHUB_ENV
+
+      - name: 🛠️ Build & Push Backend
+        run: |
+          docker build -t $USERNAME/violation-backend:$TAG -t $USERNAME/violation-backend:$LATEST ./backend
+          docker push $USERNAME/violation-backend:$TAG
+          docker push $USERNAME/violation-backend:$LATEST
+
+      - name: 🛠️ Build & Push Detect Consumer
+        run: |
+          docker build \
+            -f ./backend/kafka_handlers/detect_consumer/Dockerfile \
+            -t $USERNAME/violation-detect-consumer:$TAG \
+            -t $USERNAME/violation-detect-consumer:$LATEST \
+            ./backend
+          docker push $USERNAME/violation-detect-consumer:$TAG
+          docker push $USERNAME/violation-detect-consumer:$LATEST
+

@@ -1,19 +1,29 @@
 import base64
 import cv2
 import numpy as np
-from ..kafka_consumer import BaseConsumer
+import os
+import json
+from dotenv import load_dotenv
+from confluent_kafka import Producer
+from ..kafka_consumer import BaseConsumer  # đã dùng Confluent
 from detectors import get_detector_by_type
 from core.frame_processor import FrameProcessor
-from dotenv import load_dotenv
-import os
-from kafka import KafkaConsumer, KafkaProducer
-import json
+
+
 class DetectConsumer(BaseConsumer):
-    
+    def __init__(self, topic, group_id, bootstrap_servers):
+        super().__init__(topic, group_id, bootstrap_servers)
+
+        self.producer = Producer({'bootstrap.servers': bootstrap_servers})
+
+    def delivery_report(self, err, msg):
+        if err is not None:
+            print(f"[Kafka] ❌ Delivery failed: {err}")
+        else:
+            print(f"[Kafka] ✔ Message delivered to {msg.topic()} [{msg.partition()}]")
+
     def process_message(self, data):
-        
         try:
-            
             params = data.get("params")
             encoded_frame = data.get("frame")
             session_id = data.get("session_id")
@@ -35,26 +45,29 @@ class DetectConsumer(BaseConsumer):
                 "processed_frame": processed_encoded,
             }
 
-            self.producer.send("processed-frames", value=result)
-            self.producer.flush()
+            self.producer.produce(
+                topic="processed-frames",
+                value=json.dumps(result).encode('utf-8'),
+                callback=self.delivery_report
+            )
+            self.producer.poll(0)  # Trigger delivery callback
 
             print(f"Processed frame for session {session_id} with detector {detection_type}")
+
         except Exception as e:
             print(f"Error in process_message: {e}")
-        
+
+
 if __name__ == "__main__":
-    
-    print("Start Detect Consumer XXX")
+    print("Start Detect Consumer ✅")
 
     load_dotenv()
-    
+
     KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_INTERNAL_SERVERS", "kafka:9092")
 
-    detector = DetectConsumer(
+    consumer = DetectConsumer(
         topic="raw-frames",
         group_id="frame-detectors",
-        bootstrap_servers=[KAFKA_BOOTSTRAP_SERVERS]
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS
     )
-    detector.run()
-
-        
+    consumer.run()

@@ -10,4 +10,5 @@ psycopg2==2.9.10
 alembic==1.15.2
 dotenv==0.9.9
 minio==7.2.15
-kafka-python==2.2.10
+# kafka-python==2.2.10
+confluent-kafka==2.10.0
