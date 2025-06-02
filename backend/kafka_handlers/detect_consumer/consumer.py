@@ -5,12 +5,12 @@ import os
 import json
 from dotenv import load_dotenv
 from confluent_kafka import Producer
-from ..kafka_consumer import BaseConsumer  # đã dùng Confluent
+from ..kafka_consumer import KafkaConsumer  # đã dùng Confluent
 from detectors import get_detector_by_type
 from core.frame_processor import FrameProcessor
 
 
-class DetectConsumer(BaseConsumer):
+class DetectConsumer(KafkaConsumer):
     def __init__(self, topic, group_id, bootstrap_servers):
         super().__init__(topic, group_id, bootstrap_servers)
 
@@ -58,16 +58,21 @@ class DetectConsumer(BaseConsumer):
             print(f"Error in process_message: {e}")
 
 
-if __name__ == "__main__":
-    print("Start Detect Consumer ✅")
+def main():
+    print("🟢 Start Detect Consumer")
 
     load_dotenv()
+    KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_INTERNAL_SERVERS", "kafka:9092")
+    try:
+        consumer = DetectConsumer(
+            topic="raw-frames",
+            group_id="frame-detectors-test",
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS
+        )
+        consumer.run()
+    except:
+        print("Something went wrong")
 
-    KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_EXTERNAL_SERVERS", "kafka:9092")
 
-    consumer = DetectConsumer(
-        topic="raw-frames",
-        group_id="frame-detectors-test",
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS
-    )
-    consumer.run()
+if __name__ == "__main__":
+    main()
