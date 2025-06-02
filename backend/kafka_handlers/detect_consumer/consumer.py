@@ -63,7 +63,7 @@ def main():
 
     load_dotenv()
     config = {
-        "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_EXTERNAL_SERVERS", "kafka:9092"),
+        "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_INTERNAL_SERVERS", "kafka:9092"),
         "group.id": "detect-consumers",
         "auto.offset.reset": "latest",
     }
