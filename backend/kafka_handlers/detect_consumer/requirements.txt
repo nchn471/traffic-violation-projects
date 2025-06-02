@@ -1,6 +1,11 @@
-opencv-python==4.11.0.86
+# opencv-python==4.11.0.86
+# ultralytics==8.3.111
+# dotenv==0.9.9
+# minio==7.2.15
+# confluent-kafka==2.10.0
+
+opencv-python-headless==4.11.0.86
 ultralytics==8.3.111
-# kafka-python==2.2.10
-dotenv==0.9.9
+python-dotenv==0.9.0
 minio==7.2.15
 confluent-kafka==2.10.0
