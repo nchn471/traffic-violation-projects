@@ -1,14 +1,9 @@
-import os
 import json
 from confluent_kafka import Producer
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class KafkaProducer:
-    def __init__(self, bootstrap_servers=None):
-        self.bootstrap_servers = bootstrap_servers or os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-        self._producer = Producer({'bootstrap.servers': self.bootstrap_servers})
+    def __init__(self, config):
+        self._producer = Producer(config)
 
     def delivery_report(self, err, msg):
         if err is not None:
@@ -23,7 +18,7 @@ class KafkaProducer:
 
             print(f"[Kafka] Sending to topic: '{topic}' | key: {key}")
             self._producer.produce(topic=topic, key=key_bytes, value=value_bytes, callback=self.delivery_report)
-            self._producer.poll(0)  # Xử lý callback ngay lập tức
+            self._producer.poll(0)  
         except Exception as e:
             print(f"[Kafka] Failed to send message: {e}")
 

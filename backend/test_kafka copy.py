@@ -6,7 +6,7 @@ import os
 def send_test_message():
     load_dotenv()
     bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_EXTERNAL_SERVERS", "kafka:9092")
-    topic = "raw-frames"
+    topic = "frames-in"
 
     producer = Producer({'bootstrap.servers': bootstrap_servers})
 
@@ -16,7 +16,7 @@ def send_test_message():
 
     message = {
         "session_id": "test-session-123",
-        "frame": "base64:",
+        "frame": "ok:",
         "params": params,
     }
 

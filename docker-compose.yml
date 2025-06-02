@@ -69,6 +69,8 @@ services:
   backend:
     image: hnammm/violation-backend:latest
     container_name: backend
+    volumes:
+      - ./backend:/app
     ports:
       - "8000:8000"
     env_file:
@@ -86,16 +88,31 @@ services:
   detect-consumer:
     image: hnammm/violation-detect-consumer:latest
     container_name: detect_consumer
+    volumes:
+      - ./backend:/app
     env_file:
       - .env
     networks:
       - violation-net
-    command: python -m kafka_handlers.detect_consumer.consumer
+    command: ["/venv/bin/python", "-m", "kafka_handlers.detect_consumer.consumer"]
     depends_on:
       minio:
         condition: service_started
       kafka:
         condition: service_healthy
+
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - 8080:8080
+    environment:
+      DYNAMIC_CONFIG_ENABLED: 'true'
+      LOGGING_LEVEL_ROOT: 'DEBUG'
+    volumes:
+      - /c/tools/kafka/kui/config.yml:/etc/kafkaui/dynamic_config.ya
+    networks:
+      - violation-net
 
 volumes:
   postgres:

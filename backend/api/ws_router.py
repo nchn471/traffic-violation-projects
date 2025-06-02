@@ -7,7 +7,8 @@ import json
 import os
 
 from storage.minio_manager import MinIOManager
-from kafka_handlers.kafka_producer import publish_message  # cần đảm bảo đã dùng confluent-kafka ở đây
+from kafka_handlers.kafka_producer import KafkaProducer  
+
 from confluent_kafka import Consumer
 from dotenv import load_dotenv
 
@@ -15,14 +16,20 @@ load_dotenv()
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 
-# --- Tạo consumer với confluent-kafka ---
 consumer_conf = {
     'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
-    'group.id': 'websocket-group',
+    'group.id': 'ws-consumer',
     'auto.offset.reset': 'latest',
 }
 consumer = Consumer(consumer_conf)
-consumer.subscribe(['processed-frames'])
+consumer.subscribe(['frames-out'])
+
+producer_conf = {
+    'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
+    'client.id': 'ws-producer',
+
+}
+producer = KafkaProducer(producer_conf)
 
 ws_router = APIRouter()
 
@@ -76,9 +83,9 @@ async def video_websocket(websocket: WebSocket):
                 "frame": encoded_frame,
                 "params": params
             }
-            publish_message(data=message, topic="raw-frames", key=session_id)
 
-            # Poll Kafka for new messages
+            producer.publish(data=message, topic="frames-in", key=session_id)
+
             while True:
                 msg = consumer.poll(1.0)
                 if msg is None:
