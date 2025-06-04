@@ -87,7 +87,7 @@ services:
 
   detect-consumer:
     image: hnammm/violation-detect-consumer:latest
-    container_name: detect_consumer
+    container_name: detect-consumer
     volumes:
       - ./backend:/app
     env_file:
@@ -95,6 +95,7 @@ services:
     networks:
       - violation-net
     command: ["/venv/bin/python", "-m", "kafka_handlers.detect_consumer.consumer"]
+    
     depends_on:
       minio:
         condition: service_started
@@ -106,11 +107,22 @@ services:
     image: provectuslabs/kafka-ui:latest
     ports:
       - 8080:8080
+    env_file:
+      - .env
+    networks:
+      - violation-net
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.9.1
+    container_name: schema-registry
+    ports:
+      - "8081:8081"
+    depends_on:
+      - kafka
     environment:
-      DYNAMIC_CONFIG_ENABLED: 'true'
-      LOGGING_LEVEL_ROOT: 'DEBUG'
-    volumes:
-      - /c/tools/kafka/kui/config.yml:/etc/kafkaui/dynamic_config.ya
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
     networks:
       - violation-net
 

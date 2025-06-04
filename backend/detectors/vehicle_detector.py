@@ -2,8 +2,8 @@ from core.base_detector import BaseDetector
 
 class VehicleDetector(BaseDetector):
     
-    def __init__(self, model_path):
-        super().__init__()
+    def __init__(self, model_path, minio_client):
+        super().__init__(minio_client)
         self.model = self.load_model(model_path)
 
     def detect(self, roi, frame):

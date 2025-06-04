@@ -1,26 +1,44 @@
-import json
-from confluent_kafka import Producer
+from confluent_kafka import SerializingProducer
+from confluent_kafka.serialization import StringSerializer
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroSerializer
 
-class KafkaProducer:
-    def __init__(self, config):
-        self._producer = Producer(config)
+def to_dict(obj, ctx):
+    return obj  
+
+class KafkaAvroProducer:
+    def __init__(self, brokers: str, schema_registry_url: str, topic: str, schema_registry_subject: str, to_dict_func=to_dict):
+        self.topic = topic
+        schema_registry_conf = {'url': schema_registry_url}
+        self.schema_registry_client = SchemaRegistryClient(schema_registry_conf)
+        schema_str =  self.schema_registry_client.get_latest_version(schema_registry_subject).schema.schema_str
+        avro_serializer = AvroSerializer(
+            schema_str=schema_str,
+            schema_registry_client=self.schema_registry_client,
+            to_dict=to_dict_func,
+            conf={
+                'auto.register.schemas': False
+            }
+        )
+
+        producer_conf = {
+            'bootstrap.servers': brokers,
+            'key.serializer': StringSerializer('utf_8'),  
+            'value.serializer': avro_serializer
+        }
+
+        self.producer = SerializingProducer(producer_conf)
 
     def delivery_report(self, err, msg):
         if err is not None:
             print(f"[Kafka] Delivery failed: {err}")
         else:
-            print(f"[Kafka] Message delivered to {msg.topic()} [{msg.partition()}] at offset {msg.offset()}")
+            print(f"[Kafka] Delivered to {msg.topic()} [{msg.partition()}] @ offset {msg.offset()}")
 
-    def publish(self, data: dict, topic: str, key: str = None):
-        try:
-            value_bytes = json.dumps(data).encode('utf-8')
-            key_bytes = key.encode('utf-8') if key else None
-
-            print(f"[Kafka] Sending to topic: '{topic}' | key: {key}")
-            self._producer.produce(topic=topic, key=key_bytes, value=value_bytes, callback=self.delivery_report)
-            self._producer.poll(0)  
-        except Exception as e:
-            print(f"[Kafka] Failed to send message: {e}")
-
-    def flush(self):
-        self._producer.flush()
+    def publish(self, value: dict, key: str = None):
+        self.producer.produce(
+            topic=self.topic,
+            key=key,
+            value=value,
+            on_delivery=self.delivery_report
+        )

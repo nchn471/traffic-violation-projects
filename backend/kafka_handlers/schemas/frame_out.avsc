@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "FrameOut",
+  "namespace": "violation.streaming",
+  "fields": [
+    {
+      "name": "session_id",
+      "type": "string"
+    },
+    {
+      "name": "processed_frame",
+      "type": "bytes"
+    }
+  ]
+}

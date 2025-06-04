@@ -1,49 +1,60 @@
-import json
-from confluent_kafka import Consumer, KafkaException, KafkaError
+from confluent_kafka import DeserializingConsumer, KafkaError, KafkaException
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroDeserializer
+from confluent_kafka.serialization import StringDeserializer
 
 
-class KafkaConsumer:
-    def __init__(self, config, topics):
-        self._consumer = Consumer(config)
-        
+def from_dict(obj, ctx):
+    return obj 
+
+
+class KafkaAvroConsumer:
+    def __init__(self, config: dict, topics: list, schema_registry_url: str, subject: str, from_dict_func=from_dict):
         self._topics = topics
-        self._consumer.subscribe(self._topics)
-    
+
+        self.schema_registry_client = SchemaRegistryClient({'url': schema_registry_url})
+
+        schema_str = self.schema_registry_client.get_latest_version(subject).schema.schema_str
+
+        avro_deserializer = AvroDeserializer(
+            schema_registry_client=self.schema_registry_client,
+            schema_str=schema_str,
+            from_dict=from_dict_func,
+            conf={
+                'auto.register.schemas': False
+            }
+        )
+
+        consumer_conf = {
+            **config,
+            'key.deserializer': StringDeserializer('utf_8'),
+            'value.deserializer': avro_deserializer
+        }
+
+        self._consumer = DeserializingConsumer(consumer_conf)
+        self._consumer.subscribe(topics)
+
     def process_message(self, message: dict):
-        """
-        Override trong subclass để xử lý message.
-        """
-        raise NotImplementedError("Override process_message in subclass")
-    
+        raise NotImplementedError("Override method `process_message` in subclass.")
+
     def run(self):
-        print(f"Starting consumer for topics: {self._topics}")
+        print(f"Starting Avro consumer on topics: {self._topics}")
         try:
             while True:
-                msg = self._consumer.poll(timeout=1.0)
+                msg = self._consumer.poll(1.0)
                 if msg is None:
                     continue
                 if msg.error():
-                    # xử lý error đặc biệt nếu cần
                     if msg.error().code() == KafkaError._PARTITION_EOF:
-                        # end of partition event, không phải lỗi nghiêm trọng
-                        continue
+                        print(f"End of partition {msg.topic()} [{msg.partition()}]")
                     else:
-                        print(f"Consumer error: {msg.error()}")
-                        continue
-
-                try:
-                    value = json.loads(msg.value().decode('utf-8'))
+                        raise KafkaException(msg.error())
+                else:
+                    value = msg.value()
                     self.process_message(value)
                     self._consumer.commit(msg)
-                except json.JSONDecodeError as e:
-                    print(f"Failed to decode JSON message: {e}")
-                except Exception as e:
-                    print(f"Failed to process message: {e}")
-
-        except KeyboardInterrupt:
-            print("Consumer interrupted by user.")
-        except KafkaException as e:
-            print(f"Kafka error: {e}")
+        except Exception as e:
+            print(f"[Error] {e}")
         finally:
             self._consumer.close()
             print("Consumer closed.")

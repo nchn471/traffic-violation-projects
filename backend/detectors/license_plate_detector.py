@@ -15,8 +15,8 @@ def check_point_linear(x, y, x1, y1, x2, y2):
 
 
 class LicensePlateDetector(BaseDetector):
-    def __init__(self, lp_model_path, ocr_model_path, params):
-        super().__init__(params)
+    def __init__(self, lp_model_path, ocr_model_path,minio_client,params):
+        super().__init__(minio_client, params)
         self.lp_model = self.load_model(lp_model_path)
         self.ocr_model = self.load_model(ocr_model_path)
 
@@ -124,12 +124,12 @@ class LicensePlateDetector(BaseDetector):
 
 
     def detect(self, roi, frame):
-        results = self.lp_model.predict(source=frame, imgsz=640, conf=0.2, iou=0.4)[0]
+        results = self.lp_model.predict(source=roi, imgsz=640, conf=0.2, iou=0.4)[0]
         plate_boxes = results.boxes.xyxy.cpu().numpy().tolist()
         detected_plates = set()
 
         if not plate_boxes:
-            lp = self.read_license_plate(frame)
+            lp = self.read_license_plate(roi)
             if lp != "unknown":
                 detected_plates.add(lp)
                 cv2.putText(frame, lp, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
@@ -144,7 +144,6 @@ class LicensePlateDetector(BaseDetector):
                         rotated = self.deskew_image(crop, enhance_contrast=contrast, use_top_lines=threshold)
                         lp = self.read_license_plate(rotated)
                         if lp != "unknown":
-                            cv2.imwrite(f'output/crops/plate_{i}_deskew.jpg', rotated)
                             detected_plates.add(lp)
                             cv2.putText(frame, lp, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
                             break

@@ -18,7 +18,7 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 
 consumer_conf = {
     'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
-    'group.id': 'ws-consumer',
+    'group.id': 'ws_consumer',
     'auto.offset.reset': 'latest',
 }
 consumer = Consumer(consumer_conf)
@@ -39,7 +39,7 @@ params = {
     "roi": [(73, 718), (342, 330), (1061, 323), (1076, 331), (1019, 394), (1009, 453), (1026, 509), (1052, 572), (1096, 649), (1141, 717)],
     "stop_line": [(154, 566), (1066, 541)],
     "light_roi": [(650, 5), (700, 5), (700, 50), (650, 50)],
-    "detection_type": "lane",
+    "detection_type": "lp",
     "lanes": [
         {
             "id": 1,
@@ -101,7 +101,7 @@ async def video_websocket(websocket: WebSocket):
                     continue
 
                 if data.get("session_id") == session_id:
-                    await websocket.send_text(data["processed_frame"])
+                    await websocket.send_text(data["frame"])
                     break
 
             await asyncio.sleep(0.03)

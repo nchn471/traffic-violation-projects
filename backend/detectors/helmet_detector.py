@@ -1,10 +1,10 @@
-from .license_plate_detector import LicensePlateDetector
+from core.base_detector import BaseDetector
 import numpy as np
 
-class HelmetDetector(LicensePlateDetector):
+class HelmetDetector(BaseDetector):
 
-    def __init__(self, lp__path, ocr_path, vehicle_path, helmet_path, params):
-        super().__init__(lp__path, ocr_path, params)
+    def __init__(self, vehicle_path, helmet_path, minio_client,params):
+        super().__init__(minio_client,params)
         self.vehicle_detector = self.load_model(vehicle_path)
         self.helmet_detector = self.load_model(helmet_path)
 
@@ -20,7 +20,7 @@ class HelmetDetector(LicensePlateDetector):
         )[0]
 
         original_frame = np.copy(frame)
-
+        violations = []
         if not hasattr(detection_results, "boxes") or detection_results.boxes is None:
             return
         motorbike_cls_id = next((k for k, v in self.vehicle_detector.names.items() if v == "motorcycle"), None)
@@ -72,7 +72,6 @@ class HelmetDetector(LicensePlateDetector):
                     self.violated_ids.add(track_id)
 
                     frame_copy = np.copy(original_frame)
-                    lp_img, lp_text = self.lp_recognition(vehicle_img)
 
                     self.draw_bounding_box(frame_copy, x1, y1, x2, y2, color, text)
                     self.draw_bounding_box(
@@ -83,15 +82,14 @@ class HelmetDetector(LicensePlateDetector):
                         font_scale=0.25,
                         thickness=1
                     )
-
-                    violation_type = "no_helmet"
-                    location = self.params["location"]
-                    self.violation_recorder.save_violation_snapshot(
-                        vehicle_type,
-                        violation_type,
-                        location,
-                        frame_copy,
-                        vehicle_img,
-                        lp_img,
-                        lp_text
-                    )
+                    violation = {
+                        "violation_type" : "no_helmet",
+                        "vehicle_type" : vehicle_type,
+                        "confidence" : helmet_conf,
+                        "location" : self.params["location"],
+                        "violation_frame" : frame_copy,
+                        "vehicle_frame" : vehicle_img,
+                    }
+                    violations.append(violation)
+                    
+        return frame, violations

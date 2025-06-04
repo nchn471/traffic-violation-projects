@@ -1,33 +1,58 @@
-import base64
 import cv2
 import numpy as np
-import os
-import json
-from dotenv import load_dotenv
-from ..kafka_consumer import KafkaConsumer 
-from ..kafka_producer import KafkaProducer  
 from detectors import get_detector_by_type
+from ..kafka_consumer import KafkaAvroConsumer
+from ..kafka_producer import KafkaAvroProducer
 from core.frame_processor import FrameProcessor
+from dotenv import load_dotenv
+import os
+
+def convert_point(point_dict):
+    if isinstance(point_dict, dict) and 'x' in point_dict and 'y' in point_dict:
+        return (point_dict['x'], point_dict['y'])
+    return point_dict
+
+def convert_params(params):
+    if not isinstance(params, dict):
+        return params
+
+    for key in ['roi', 'stop_line', 'light_roi']:
+        if key in params and isinstance(params[key], list):
+            params[key] = [convert_point(p) for p in params[key]]
+
+    if 'lanes' in params and isinstance(params['lanes'], list):
+        for lane in params['lanes']:
+            if isinstance(lane, dict) and 'polygon' in lane and isinstance(lane['polygon'], list):
+                lane['polygon'] = [convert_point(p) for p in lane['polygon']]
+
+    return params
+
+def from_dict(obj, ctx):
+    if not isinstance(obj, dict):
+        return obj
+
+    if 'params' in obj:
+        obj['params'] = convert_params(obj['params'])
+
+    return obj
 
 
-class DetectConsumer(KafkaConsumer):
-    def __init__(self, config, topics):
-        super().__init__(config, topics)
-        self.producer = KafkaProducer({'bootstrap.servers': config["bootstrap.servers"]})
+class DetectConsumer(KafkaAvroConsumer):
+    def __init__(self, config, topics, schema_registry_url, subject, from_dict_func=from_dict):
+        super().__init__(config, topics, schema_registry_url, subject, from_dict_func)
+        self.producer = KafkaAvroProducer({'bootstrap.servers': config['bootstrap.servers']})
 
-    def process_message(self, data):
+    def process_message(self, data: dict):
         try:
-            params = data.get("params")
-            encoded_frame = data.get("frame")
             session_id = data.get("session_id")
+            frame_bytes = data.get("frame")
+            params = data.get("params")
 
-            if not (params and encoded_frame and session_id):
-                print("Warning: Missing one of required keys in data")
+            if not (session_id and frame_bytes and params):
+                print("Warning: Missing required fields")
                 return
 
-            # Decode frame
-            frame_data = base64.b64decode(encoded_frame)
-            np_arr = np.frombuffer(frame_data, np.uint8)
+            np_arr = np.frombuffer(frame_bytes, np.uint8)
             frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             if frame is None:
                 print(f"Warning: Failed to decode frame for session {session_id}")
@@ -36,27 +61,23 @@ class DetectConsumer(KafkaConsumer):
             detection_type = params.get("detection_type")
             detector = get_detector_by_type(detection_type, params)
             processor = FrameProcessor(detector, params)
-            processed_frame = processor.process(frame)
+            processed_frame, _ = processor.process(frame)
 
-            # Encode processed frame
             success, buffer = cv2.imencode(".jpg", processed_frame)
             if not success:
                 print(f"Warning: Failed to encode processed frame for session {session_id}")
                 return
-            processed_encoded = base64.b64encode(buffer).decode("utf-8")
-
+            encoded_frame = buffer.tobytes()
             result = {
                 "session_id": session_id,
-                "processed_frame": processed_encoded,
+                "processed_frame": encoded_frame
             }
 
             self.producer.publish(result, topic="frames-out", key=session_id)
-
             print(f"Processed frame for session {session_id} with detector {detection_type}")
 
         except Exception as e:
-            print(f"Error in process_message: {e}")
-
+            print(f"Error processing message: {e}")
 
 def main():
     print("🟢 Start Detect Consumer")
@@ -68,9 +89,11 @@ def main():
         "auto.offset.reset": "latest",
     }
     topics = ["frames-in"]
-    consumer = DetectConsumer(config, topics)
-    consumer.run()
+    schema_registry_url = os.getenv("SCHEMA_REGISTRY_URL")
+    subject = "frames-in-value"
 
+    consumer = DetectConsumer(config, topics, schema_registry_url, subject)
+    consumer.run()
 
 if __name__ == "__main__":
     main()
