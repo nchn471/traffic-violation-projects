@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_EXTERNAL_SERVERS", "kafka:9092")
-SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
+SCHEMA_REGISTRY_URL = "http://localhost:8081"
 SCHEMA_SUBJECT = 'frames-in-value'
 
 def convert_point_list(points):
@@ -54,7 +54,7 @@ raw_params = {
     "roi": [(73, 718), (342, 330), (1061, 323), (1076, 331), (1019, 394), (1009, 453), (1026, 509), (1052, 572), (1096, 649), (1141, 717)],
     "stop_line": [(154, 566), (1066, 541)],
     "light_roi": [(650, 5), (700, 5), (700, 50), (650, 50)],
-    "detection_type": "lp",
+    "detection_type": "vehicle",
     "lanes": [
         {
             "id": 1,
@@ -88,12 +88,12 @@ video_path = minio_client.get_file(prepared_params['video'])
 cap = cv2.VideoCapture(video_path)
 
 session_id = str(uuid.uuid4())
-
+i=0
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
-
+    
     _, buffer = cv2.imencode(".jpg", frame)
     encoded_frame = buffer.tobytes() 
     message = {
@@ -101,6 +101,10 @@ while cap.isOpened():
         "frame": encoded_frame,
         "params": prepared_params
     }
-
+    i+=1
     producer.publish(value=message, key=session_id)
     producer.producer.poll(0)
+    
+producer.producer.flush()
+
+print(f"Total Frame: {i}")

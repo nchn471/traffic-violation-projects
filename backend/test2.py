@@ -15,7 +15,7 @@ params = {
     # "light_roi" : [(546, 12), (542, 72), (613, 73), (607, 13)],
     "stop_line" :  [(154, 566), (1066, 541)],
     "light_roi": [(650, 5), (700, 5), (700, 50), (650, 50)],
-    "detection_type": "vehicle",  
+    "detection_type": "helmet",  
     "lanes": [
         {
             "id": 1,

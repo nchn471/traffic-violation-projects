@@ -16,7 +16,8 @@ class HelmetDetector(BaseDetector):
             iou=0.4,
             imgsz=640,
             persist=True,
-            stream=False
+            stream=False,
+            tracker="bytetrack.yaml"
         )[0]
 
         original_frame = np.copy(frame)

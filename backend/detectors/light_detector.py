@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from .license_plate_detector import LicensePlateDetector
+from core.base_detector import BaseDetector
 
 def is_red(frame, light_roi, threshold=0.008):
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
@@ -21,13 +21,12 @@ def is_red(frame, light_roi, threshold=0.008):
     return red_ratio > threshold
 
 
-class LightDetector(LicensePlateDetector):
-    def __init__(self, lp__path, ocr_path, vehicle_path, params):
-        super().__init__(lp__path, ocr_path, params)
+class LightDetector(BaseDetector):
+    def __init__(self, vehicle_path, minio_client, params):
+        super().__init__(minio_client, params)
         self.model = self.load_model(vehicle_path)
         self.track_states = {}
         self.violation_status = {}
-        self.violation_ids = set()
 
     def detect(self, roi, frame):
         results = self.model.track(
@@ -39,6 +38,7 @@ class LightDetector(LicensePlateDetector):
             stream=False,
             verbose=False
         )[0]    
+        violations = []
         original_frame = np.copy(frame)
         light_roi = self.params['light_roi']
         is_red_light = is_red(frame, light_roi)
@@ -62,6 +62,8 @@ class LightDetector(LicensePlateDetector):
             track_id = int(box.id[0])
             cls_id = int(box.cls[0])
             vehicle_type = self.model.names[cls_id]
+            confidence = float(box.conf[0])
+
             center_y = (y1 + y2) // 2
 
             status = self.violation_status.get(track_id, None)
@@ -96,8 +98,8 @@ class LightDetector(LicensePlateDetector):
             color = self.RED_BGR if label == VIOLATION_LABEL else self.GREEN_BGR
             self.draw_bounding_box(frame, x1, y1, x2, y2, color=color, label=label)
 
-            if label == VIOLATION_LABEL and track_id not in self.violation_ids:
-                self.violation_ids.add(track_id)
+            if label == VIOLATION_LABEL and track_id not in self.violated_ids:
+                self.violated_ids.add(track_id)
 
 
                 frame_copy = np.copy(original_frame)
@@ -105,17 +107,14 @@ class LightDetector(LicensePlateDetector):
 
                 self.draw_bounding_box(frame_copy, x1, y1, x2, y2, color=color, label=label)
 
-                lp_img, lp_text = self.lp_recognition(vehicle_img)
 
-                violation_type = "red_light_violation"
-                location = self.params.get("location")
-
-                self.violation_recorder.save_violation_snapshot(
-                    vehicle_type,
-                    violation_type,
-                    location,
-                    frame_copy,
-                    vehicle_img,
-                    lp_img,
-                    lp_text
-                )
+                violation = {
+                    "violation_type" : "cross_red_light",
+                    "vehicle_type" : vehicle_type,
+                    "confidence" : confidence,
+                    "location" : self.params["location"],
+                    "violation_frame" : frame_copy,
+                    "vehicle_frame" : vehicle_img,
+                }
+                violations.append(violation)
+        return frame, violations

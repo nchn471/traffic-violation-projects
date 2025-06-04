@@ -14,11 +14,12 @@ class BaseDetector():
         self.minio_client = minio_client
         if params:
             self.params = params
+            
         self.violated_ids = set()
 
 
     def load_model(self, model_path: str):
-        print(self.minio_client)
+        print(f"Load Model: {model_path}") 
         local_path = self.minio_client.get_file(model_path)
         return YOLO(local_path)
     

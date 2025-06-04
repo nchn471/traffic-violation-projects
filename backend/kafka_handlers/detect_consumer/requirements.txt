@@ -3,3 +3,6 @@ ultralytics==8.3.111
 python-dotenv==0.9.0
 minio==7.2.15
 confluent-kafka[avro, schemaregistry]==2.10.0
+SQLAlchemy==2.0.40
+psycopg2-binary==2.9.10
+alembic==1.15.2

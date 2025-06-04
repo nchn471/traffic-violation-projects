@@ -1,11 +1,13 @@
+import os
 import cv2
 import numpy as np
+from dotenv import load_dotenv
+
 from detectors import get_detector_by_type
+from core.frame_processor import FrameProcessor
 from ..kafka_consumer import KafkaAvroConsumer
 from ..kafka_producer import KafkaAvroProducer
-from core.frame_processor import FrameProcessor
-from dotenv import load_dotenv
-import os
+
 
 def convert_point(point_dict):
     if isinstance(point_dict, dict) and 'x' in point_dict and 'y' in point_dict:
@@ -28,28 +30,29 @@ def convert_params(params):
     return params
 
 def from_dict(obj, ctx):
-    if not isinstance(obj, dict):
-        return obj
-
-    if 'params' in obj:
+    if isinstance(obj, dict) and 'params' in obj:
         obj['params'] = convert_params(obj['params'])
-
     return obj
 
 
 class DetectConsumer(KafkaAvroConsumer):
-    def __init__(self, config, topics, schema_registry_url, subject, from_dict_func=from_dict):
-        super().__init__(config, topics, schema_registry_url, subject, from_dict_func)
-        self.producer = KafkaAvroProducer({'bootstrap.servers': config['bootstrap.servers']})
-
+    def __init__(self, config, topics, schema_registry_url, subject):
+        super().__init__(config, topics, schema_registry_url, subject, from_dict_func=from_dict)
+        self.producer = KafkaAvroProducer(
+            config['bootstrap.servers'],
+            schema_registry_url,
+            "frames-out",
+            "frames-out-value"  
+        )
+        self.cached = {}
+        
     def process_message(self, data: dict):
         try:
             session_id = data.get("session_id")
             frame_bytes = data.get("frame")
             params = data.get("params")
-
-            if not (session_id and frame_bytes and params):
-                print("Warning: Missing required fields")
+            if not all([session_id, frame_bytes, params]):
+                print("Warning: Missing required fields in message.")
                 return
 
             np_arr = np.frombuffer(frame_bytes, np.uint8)
@@ -57,32 +60,40 @@ class DetectConsumer(KafkaAvroConsumer):
             if frame is None:
                 print(f"Warning: Failed to decode frame for session {session_id}")
                 return
-
+            
             detection_type = params.get("detection_type")
-            detector = get_detector_by_type(detection_type, params)
+            if session_id in self.cached:
+                detector = self.cached[session_id]
+            else:
+                detector = get_detector_by_type(detection_type, params)
+                self.cached[session_id] = detector
+                
             processor = FrameProcessor(detector, params)
-            processed_frame, _ = processor.process(frame)
+            processed_frame = processor.process(frame)
 
             success, buffer = cv2.imencode(".jpg", processed_frame)
             if not success:
                 print(f"Warning: Failed to encode processed frame for session {session_id}")
                 return
-            encoded_frame = buffer.tobytes()
+
             result = {
                 "session_id": session_id,
-                "processed_frame": encoded_frame
+                "processed_frame": buffer.tobytes()
             }
 
-            self.producer.publish(result, topic="frames-out", key=session_id)
-            print(f"Processed frame for session {session_id} with detector {detection_type}")
+            self.producer.publish(result, key=session_id)
+            self.producer.producer.poll(0)
+            print(f"Processed frame for session {session_id} with detector '{detection_type}'")
 
         except Exception as e:
             print(f"Error processing message: {e}")
 
+
 def main():
-    print("🟢 Start Detect Consumer")
+    print("Starting Detect Consumer")
 
     load_dotenv()
+
     config = {
         "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_INTERNAL_SERVERS", "kafka:9092"),
         "group.id": "detect-consumers",
@@ -94,6 +105,7 @@ def main():
 
     consumer = DetectConsumer(config, topics, schema_registry_url, subject)
     consumer.run()
+
 
 if __name__ == "__main__":
     main()
