@@ -2,7 +2,7 @@ FROM python:3.12.9-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install libgl1 -y
+RUN apt-get update && apt-get install libgl1 libglib2.0-0 -y
 
 COPY requirements.txt .
 
