@@ -15,8 +15,8 @@ def check_point_linear(x, y, x1, y1, x2, y2):
 
 
 class LicensePlateDetector(BaseDetector):
-    def __init__(self, lp_model_path, ocr_model_path,minio_client,params):
-        super().__init__(minio_client, params)
+    def __init__(self, lp_model_path, ocr_model_path,minio_client):
+        super().__init__(minio_client)
         self.lp_model = self.load_model(lp_model_path)
         self.ocr_model = self.load_model(ocr_model_path)
 
@@ -150,9 +150,13 @@ class LicensePlateDetector(BaseDetector):
                     else:
                         continue
                     break
+
+        return {
+            "frame" : frame
+        }
                 
     def lp_recognition(self, vehicle_img):
-        results = self.lp_model.predict(source=vehicle_img, imgsz=640, conf=0.1, iou=0.4)[0]
+        results = self.lp_model.predict(source=vehicle_img, imgsz=640, conf=0.1, iou=0.4, verbose=False)[0]
         boxes = results.boxes
 
         if boxes is None or len(boxes) == 0:

@@ -31,6 +31,9 @@ class KafkaAvroConsumer:
         self._consumer = DeserializingConsumer(consumer_conf)
         self._consumer.subscribe(topics)
 
+    def get_consumer(self):
+        return self._consumer
+    
     def process_message(self, message: dict):
         """Override this method in subclasses to handle each consumed message."""
         raise NotImplementedError("Override the 'process_message' method in your subclass.")
@@ -58,3 +61,4 @@ class KafkaAvroConsumer:
         finally:
             self._consumer.close()
             print("Kafka consumer closed.")
+

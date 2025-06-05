@@ -1,5 +1,4 @@
 import cv2
-import base64
 import uuid
 import os
 
@@ -7,6 +6,7 @@ from storage.minio_manager import MinIOManager
 from kafka_handlers.kafka_producer import KafkaAvroProducer 
 
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
@@ -54,7 +54,7 @@ raw_params = {
     "roi": [(73, 718), (342, 330), (1061, 323), (1076, 331), (1019, 394), (1009, 453), (1026, 509), (1052, 572), (1096, 649), (1141, 717)],
     "stop_line": [(154, 566), (1066, 541)],
     "light_roi": [(650, 5), (700, 5), (700, 50), (650, 50)],
-    "detection_type": "vehicle",
+    "detection_type": "light",
     "lanes": [
         {
             "id": 1,
@@ -99,6 +99,7 @@ while cap.isOpened():
     message = {
         "session_id": session_id,
         "frame": encoded_frame,
+        "timestamp" : str(datetime.now()),
         "params": prepared_params
     }
     i+=1

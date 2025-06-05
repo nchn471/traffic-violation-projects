@@ -82,5 +82,8 @@ class LaneDetector(BaseDetector):
                         "vehicle_frame" : vehicle_img,
                     }
                     violations.append(violation)
-                    
-        return frame, violations
+        
+        return {
+            "frame" : frame,
+            "violations" : violations
+        }

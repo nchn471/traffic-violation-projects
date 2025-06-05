@@ -32,3 +32,7 @@ class VehicleDetector(BaseDetector):
             text = f"#{track_id} {label[:5]} {int(conf*100)}%"
 
             self.draw_bounding_box(frame, x1, y1, x2, y2, self.BLUE_BGR, text)
+
+        return {
+            "frame" : frame
+        }

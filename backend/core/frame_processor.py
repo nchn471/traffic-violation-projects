@@ -38,7 +38,7 @@ class FrameProcessor:
     def process(self, frame):
         roi = self.extract_roi(frame)
 
-        self.detector.detect(roi, frame)
+        result = self.detector.detect(roi, frame)
 
-        return frame
+        return result
 

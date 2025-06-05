@@ -1,35 +1,60 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import cv2
-import base64
 import asyncio
 import uuid
-import json
 import os
-
+from datetime import datetime
 from storage.minio_manager import MinIOManager
-from kafka_handlers.kafka_producer import KafkaProducer  
-
-from confluent_kafka import Consumer
+from kafka_handlers.kafka_producer import KafkaAvroProducer
+from kafka_handlers.consumers.ws_consumer.consumer import WebsocketConsumer
+from kafka_handlers.utils import encode_frame
 from dotenv import load_dotenv
 
 load_dotenv()
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+def convert_point_list(points):
+    return [{"x": x, "y": y} for (x, y) in points]
+
+def prepare_params(params):
+    return {
+        "video": params["video"],
+        "location": params["location"],
+        "roi": convert_point_list(params["roi"]),
+        "stop_line": convert_point_list(params["stop_line"]),
+        "light_roi": convert_point_list(params["light_roi"]),
+        "detection_type": params["detection_type"],
+        "lanes": [
+            {
+                "id": lane["id"],
+                "polygon": convert_point_list(lane["polygon"]),
+                "allow_labels": lane["allow_labels"]
+            }
+            for lane in params["lanes"]
+        ]
+    }
+
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
+
+producer = KafkaAvroProducer(
+    brokers=KAFKA_BOOTSTRAP_SERVERS,
+    schema_registry_url=SCHEMA_REGISTRY_URL,
+    topic=["frames-in"],
+    schema_registry_subject="frames-in-value"
+)
 
 consumer_conf = {
     'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
-    'group.id': 'ws_consumer',
+    'group.id': 'ws-consumers',
     'auto.offset.reset': 'latest',
 }
-consumer = Consumer(consumer_conf)
-consumer.subscribe(['frames-out'])
 
-producer_conf = {
-    'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
-    'client.id': 'ws-producer',
-
-}
-producer = KafkaProducer(producer_conf)
+consumer = WebsocketConsumer(
+    config=consumer_conf,
+    topics=["frames-out"],
+    schema_registry_url=SCHEMA_REGISTRY_URL,
+    schema_registry_subject="frames-out-value"
+)
 
 ws_router = APIRouter()
 
@@ -59,54 +84,36 @@ params = {
     ]
 }
 
+
 @ws_router.websocket("/ws/camera")
 async def video_websocket(websocket: WebSocket):
     await websocket.accept()
-
-    minio_client = MinIOManager()
-    video_path = minio_client.get_file(params['video'])
-    cap = cv2.VideoCapture(video_path)
-
     session_id = str(uuid.uuid4())
 
-    try:
+    minio_client = MinIOManager()
+    video_path = minio_client.get_file(params["video"])
+    cap = cv2.VideoCapture(video_path)
+
+    async def send_frames():
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
 
-            _, buffer = cv2.imencode(".jpg", frame)
-            encoded_frame = base64.b64encode(buffer).decode("utf-8")
-
             message = {
                 "session_id": session_id,
-                "frame": encoded_frame,
-                "params": params
+                "frame": encode_frame(frame),
+                "timestamp": str(datetime.now()),
+                "params": prepare_params(params)
             }
 
-            producer.publish(data=message, topic="frames-in", key=session_id)
-
-            while True:
-                msg = consumer.poll(1.0)
-                if msg is None:
-                    continue
-                if msg.error():
-                    print(f"Consumer error: {msg.error()}")
-                    continue
-
-                try:
-                    data = json.loads(msg.value().decode("utf-8"))
-                except Exception as e:
-                    print(f"Failed to decode message: {e}")
-                    continue
-
-                if data.get("session_id") == session_id:
-                    await websocket.send_text(data["frame"])
-                    break
-
-            await asyncio.sleep(0.03)
-
+            producer.publish(value=message, key=session_id)
+            await asyncio.sleep(0.03) 
+            
+    try:
+        await asyncio.gather(send_frames(), consumer.run(websocket,session_id))
     except WebSocketDisconnect:
         print("Client disconnected.")
     finally:
         cap.release()
+

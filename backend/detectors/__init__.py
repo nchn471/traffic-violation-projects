@@ -14,9 +14,8 @@ def get_detector_by_type(det_type, params=None):
         from storage.database import get_db
         db = next(get_db())
         return ViolationRecorder(
-            lp_model_path=LP_MODEL_PATH,
-            ocr_model_path=OCR_MODEL_PATH,
-            params=params,
+            lp_path=LP_MODEL_PATH,
+            ocr_path=OCR_MODEL_PATH,
             minio_client=minio_client,
             db=db
         )
@@ -56,7 +55,6 @@ def get_detector_by_type(det_type, params=None):
         return LicensePlateDetector(
             lp_model_path=LP_MODEL_PATH,
             ocr_model_path=OCR_MODEL_PATH,
-            params=params,
             minio_client=minio_client
         )
     else:

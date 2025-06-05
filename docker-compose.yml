@@ -94,7 +94,7 @@ services:
       - .env
     networks:
       - violation-net
-    command: ["/venv/bin/python", "-m", "kafka_handlers.detect_consumer.consumer"]
+    command: ["/venv/bin/python", "-m", "kafka_handlers.consumers.detect_consumer.consumer"]
     
     depends_on:
       minio:
@@ -102,6 +102,24 @@ services:
       kafka:
         condition: service_healthy
 
+  record-consumer:
+    image: hnammm/violation-detect-consumer:latest
+    container_name: record-consumer
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    networks:
+      - violation-net
+    command: ["/venv/bin/python", "-m", "kafka_handlers.consumers.record_consumer.consumer"]
+    mem_limit: 2g
+    cpus: 1.0
+
+    depends_on:
+      minio:
+        condition: service_started
+      kafka:
+        condition: service_healthy
 
   kafka-ui:
     container_name: kafka-ui
@@ -120,10 +138,8 @@ services:
       - "8081:8081"
     depends_on:
       - kafka
-    environment:
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+    env_file:
+      - .env
     networks:
       - violation-net
 
