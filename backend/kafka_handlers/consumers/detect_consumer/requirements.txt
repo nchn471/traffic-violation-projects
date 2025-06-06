@@ -6,3 +6,4 @@ confluent-kafka[avro, schemaregistry]==2.10.0
 SQLAlchemy==2.0.40
 psycopg2-binary==2.9.10
 alembic==1.15.2
+lap>=0.5.12

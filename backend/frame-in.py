@@ -90,6 +90,9 @@ cap = cv2.VideoCapture(video_path)
 session_id = str(uuid.uuid4())
 i=0
 while cap.isOpened():
+    if i>10:
+        print("Stop, Enough Frame For Test")
+        break 
     ret, frame = cap.read()
     if not ret:
         break

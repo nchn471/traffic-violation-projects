@@ -1,46 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Render video from base64 frames</title>
-<style>
-  canvas {
-    border: 1px solid black;
-    width: 640px;
-    height: 480px;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <title>WebSocket Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #status { margin-bottom: 10px; }
+    img { max-width: 640px; max-height: 480px; border: 1px solid #ccc; }
+  </style>
 </head>
 <body>
+  <h2>WebSocket Video Stream Test</h2>
+  <div id="status">Connecting...</div>
+  <img id="video-frame" alt="Video Frame" />
 
-<canvas id="videoCanvas" width="1920" height="1080"></canvas>
+  <script>
+    const statusEl = document.getElementById('status');
+    const videoFrame = document.getElementById('video-frame');
 
-<script>
-  const canvas = document.getElementById('videoCanvas');
-  const ctx = canvas.getContext('2d');
+    const ws = new WebSocket('ws://localhost:8000/ws/camera');
 
-  const ws = new WebSocket("ws://localhost:8000/ws/camera");
+    ws.binaryType = 'blob'; // Nhận dữ liệu dạng Blob (ảnh/video frame)
 
-  ws.onopen = () => {
-    console.log("WebSocket connected");
-  };
+    ws.onopen = () => {
+      statusEl.textContent = 'Connected to WebSocket server. Sending params...';
 
-  ws.onmessage = (event) => {
-    // Giả sử server gửi thẳng base64 string ảnh jpeg
-    const base64Image = event.data;
+      const params = {
+        params: {
+          video: "videos/La-Khê-Hà_Đông.mp4",
+          location: "Lê Duẩn, Nguyễn Thái Học",
+          roi: [[73, 718], [342, 330], [1061, 323], [1076, 331], [1019, 394], [1009, 453], [1026, 509], [1052, 572], [1096, 649], [1141, 717]],
+          stop_line: [[154, 566], [1066, 541]],
+          light_roi: [[650, 5], [700, 5], [700, 50], [650, 50]],
+          detection_type: "helmet",
+          lanes: [
+            {
+              id: 1,
+              polygon: [[76, 717], [274, 417], [543, 422], [492, 719]],
+              allow_labels: ["car", "truck"]
+            },
+            {
+              id: 2,
+              polygon: [[492, 719], [543, 422], [758, 440], [790, 717]],
+              allow_labels: ["motorcycle", "bicycle"]
+            },
+            {
+              id: 3,
+              polygon: [[790, 717], [758, 440], [1009, 429], [1172, 719]],
+              allow_labels: ["car", "motorcycle", "truck", "bicycle"]
+            }
+          ]
+        }
+      };
 
-    const img = new Image();
-    img.onload = () => {
-      // Vẽ ảnh lên canvas
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // Gửi JSON qua WebSocket
+      ws.send(JSON.stringify(params));
     };
-    img.src = "data:image/jpeg;base64," + base64Image;
-  };
 
-  ws.onclose = () => {
-    console.log("WebSocket disconnected");
-  };
-</script>
+    ws.onmessage = event => {
+      const blob = event.data;
+      const url = URL.createObjectURL(blob);
+      videoFrame.src = url;
 
+      // Giải phóng URL khi ảnh load xong
+      videoFrame.onload = () => {
+        URL.revokeObjectURL(url);
+      };
+    };
+
+    ws.onclose = () => {
+      statusEl.textContent = 'WebSocket connection closed.';
+    };
+
+    ws.onerror = error => {
+      statusEl.textContent = 'WebSocket error: ' + error.message;
+    };
+  </script>
 </body>
 </html>
