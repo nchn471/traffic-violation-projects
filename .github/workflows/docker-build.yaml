@@ -60,7 +60,7 @@ jobs:
       - name: 🛠️ Build & Push Yolo Consumer
         run: |
           docker build \
-            -f ./backend/kafka_handlers/docker_yolo_image/Dockerfile \
+            -f ./backend/kafka_handlers/consumers/docker_yolo_image/Dockerfile \
             -t $USERNAME/violation-yolo-consumer:$TAG \
             -t $USERNAME/violation-yolo-consumer:$LATEST \
             ./backend
