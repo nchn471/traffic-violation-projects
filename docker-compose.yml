@@ -95,7 +95,7 @@ services:
       - violation-net
   
   detect-consumer:
-    image: hnammm/violation-detect-consumer:latest
+    image: hnammm/violation-yolo-consumer:latest
     container_name: detect-consumer
     volumes:
       - ./backend:/app
@@ -114,7 +114,7 @@ services:
         condition: service_healthy
 
   record-consumer:
-    image: hnammm/violation-detect-consumer:latest
+    image: hnammm/violation-yolo-consumer:latest
     container_name: record-consumer
     volumes:
       - ./backend:/app
@@ -136,9 +136,7 @@ services:
 
 
   backend:
-    # image: hnammm/violation-backend:
-    build:
-      context: ./backend
+    image: hnammm/violation-backend:latest
     container_name: backend
     volumes:
       - ./backend:/app
