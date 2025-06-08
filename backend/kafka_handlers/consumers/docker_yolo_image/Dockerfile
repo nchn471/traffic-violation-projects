@@ -2,7 +2,7 @@ FROM python:3.12.9-slim
 
 WORKDIR /app
 
-COPY kafka_handlers/docker_yolo_image/requirements.txt ./requirements.txt
+COPY kafka_handlers/consumers/docker_yolo_image/requirements.txt ./requirements.txt
 
 RUN apt-get update && apt-get install libgl1 libglib2.0-0 -y
 
