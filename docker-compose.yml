@@ -66,61 +66,6 @@ services:
       timeout: 5s
       retries: 20
 
-  backend:
-    image: hnammm/violation-backend:latest
-    container_name: backend
-    volumes:
-      - ./backend:/app
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    networks:
-      - violation-net
-    depends_on:
-      postgres:
-        condition: service_started
-      minio:
-        condition: service_started
-      kafka:
-        condition: service_healthy
-
-  detect-consumer:
-    image: hnammm/violation-detect-consumer:latest
-    container_name: detect-consumer
-    volumes:
-      - ./backend:/app
-    env_file:
-      - .env
-    networks:
-      - violation-net
-    command: ["/venv/bin/python", "-m", "kafka_handlers.consumers.detect_consumer.consumer"]
-    
-    depends_on:
-      minio:
-        condition: service_started
-      kafka:
-        condition: service_healthy
-
-  record-consumer:
-    image: hnammm/violation-detect-consumer:latest
-    container_name: record-consumer
-    volumes:
-      - ./backend:/app
-    env_file:
-      - .env
-    networks:
-      - violation-net
-    command: ["/venv/bin/python", "-m", "kafka_handlers.consumers.record_consumer.consumer"]
-    mem_limit: 2g
-    cpus: 1.0
-
-    depends_on:
-      minio:
-        condition: service_started
-      kafka:
-        condition: service_healthy
-
   kafka-ui:
     container_name: kafka-ui
     image: provectuslabs/kafka-ui:latest
@@ -137,11 +82,79 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - violation-net
+  
+  detect-consumer:
+    image: hnammm/violation-detect-consumer:latest
+    container_name: detect-consumer
+    volumes:
+      - ./backend:/app
     env_file:
       - .env
     networks:
       - violation-net
+    command: ["/venv/bin/python", "-m", "kafka_handlers.consumers.detect_consumer.consumer"]
+    
+    depends_on:
+      minio:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+
+  record-consumer:
+    image: hnammm/violation-detect-consumer:latest
+    container_name: record-consumer
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    networks:
+      - violation-net
+    command: ["/venv/bin/python", "-m", "kafka_handlers.consumers.record_consumer.consumer"]
+
+    depends_on:
+      minio:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+      schema-registry:
+        condition: service_healthy
+
+
+  backend:
+    # image: hnammm/violation-backend:
+    build:
+      context: ./backend
+    container_name: backend
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    networks:
+      - violation-net
+    depends_on:
+      postgres:
+        condition: service_started
+      minio:
+        condition: service_started
+      kafka:
+        condition: service_healthy
 
 volumes:
   postgres:

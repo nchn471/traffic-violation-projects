@@ -1,8 +1,6 @@
-
 fastapi==0.115.12
 uvicorn==0.34.1
 opencv-python==4.11.0.86
-ultralytics==8.3.111
 websockets==15.0
 SQLAlchemy==2.0.40
 psycopg2-binary==2.9.10
@@ -10,3 +8,6 @@ alembic==1.15.2
 python-dotenv==0.9.0
 minio==7.2.15
 confluent-kafka[avro, schemaregistry]==2.10.0
+lap==0.5.12
+jose==1.0.0
+pydantic==2.11.3

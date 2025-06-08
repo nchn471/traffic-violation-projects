@@ -30,11 +30,10 @@ class ViolationRecorder(LicensePlateDetector):
             frame_path_local = self._save_temp_image(full_img, "frame.jpg", tmpdir)
             vehicle_path_local = self._save_temp_image(vehicle_img, "vehicle.jpg", tmpdir)
             lp_path_local = self._save_temp_image(lp_img, "lp.jpg", tmpdir) if lp_img is not None else None
-            # lp_text = 'SOS'
             frame_path = self._upload_image(frame_path_local, f"{base_path}/frame.jpg")
             vehicle_path = self._upload_image(vehicle_path_local, f"{base_path}/vehicle.jpg")
             lp_path = self._upload_image(lp_path_local, f"{base_path}/lp.jpg")
-            # lp_path = 'FFF'
+            
         violation = Violation(
             id=violation_id,
             timestamp=timestamp,

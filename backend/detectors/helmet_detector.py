@@ -87,7 +87,7 @@ class HelmetDetector(BaseDetector):
                         "violation_type" : "no_helmet",
                         "vehicle_type" : vehicle_type,
                         "confidence" : helmet_conf,
-                        "location" : self.params["location"],
+                        "video_id" : self.params["video_id"],
                         "violation_frame" : frame_copy,
                         "vehicle_frame" : vehicle_img,
                     }

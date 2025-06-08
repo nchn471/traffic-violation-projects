@@ -34,7 +34,7 @@ jobs:
           docker push $USERNAME/violation-backend:$TAG
           docker push $USERNAME/violation-backend:$LATEST
 
-  build-detect-consumer:
+  build-yolo-consumer:
     runs-on: ubuntu-latest
 
     steps:
@@ -57,12 +57,12 @@ jobs:
           echo "LATEST=latest" >> $GITHUB_ENV
           echo "USERNAME=${{ secrets.DOCKER_USERNAME }}" >> $GITHUB_ENV
 
-      - name: 🛠️ Build & Push Detect Consumer
+      - name: 🛠️ Build & Push Yolo Consumer
         run: |
           docker build \
-            -f ./backend/kafka_handlers/detect_consumer/Dockerfile \
-            -t $USERNAME/violation-detect-consumer:$TAG \
-            -t $USERNAME/violation-detect-consumer:$LATEST \
+            -f ./backend/kafka_handlers/docker_yolo_image/Dockerfile \
+            -t $USERNAME/violation-yolo-consumer:$TAG \
+            -t $USERNAME/violation-yolo-consumer:$LATEST \
             ./backend
-          docker push $USERNAME/violation-detect-consumer:$TAG
-          docker push $USERNAME/violation-detect-consumer:$LATEST
+          docker push $USERNAME/violation-yolo-consumer:$TAG
+          docker push $USERNAME/violation-yolo-consumer:$LATEST
