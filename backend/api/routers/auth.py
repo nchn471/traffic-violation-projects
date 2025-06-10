@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-
+from sqlalchemy.orm import Session
+from storage.database import get_db
+from storage.models.officer import Officer
 from api.schemas.auth import (
     LoginRequest,
     RegisterRequest,
@@ -11,12 +13,16 @@ from api.schemas.auth import (
 from api.utils.auth import (
     create_access_token,
     create_refresh_token,
-    verify_refresh_token
+    verify_refresh_token,
+    verify_access_token
 )
-from storage.models.officer import Officer
-from storage.database import get_db
 
-auth_router = APIRouter()
+auth_router = APIRouter(
+    prefix="/api/v1/auth", 
+    tags=["Authentication"],
+    # dependencies=[Depends(verify_access_token)]
+)
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -39,8 +45,12 @@ def login(form_data: LoginRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
 
-    access_token = create_access_token({"sub": user.username})
-    refresh_token = create_refresh_token({"sub": user.username})
+    token_data = {
+        "id": str(user.id),
+        "sub": user.username
+    } 
+    access_token = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data)
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -63,9 +73,12 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     )
     db.add(new_user)
     db.commit()
-
-    access_token = create_access_token({"sub": new_user.username})
-    refresh_token = create_refresh_token({"sub": new_user.username})
+    token_data = {
+        "id": str(new_user.id),
+        "sub": new_user.username
+    } 
+    access_token = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data)
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -90,3 +103,26 @@ def refresh_token(token_req: RefreshTokenRequest):
         refresh_token=refresh_token,
         token_type="bearer"
     )
+
+@auth_router.get("/protected")
+def protected_route(payload: dict = Depends(verify_access_token)):
+    username = payload.get("sub")
+    return {"message": f"Hello {username}"}
+
+@auth_router.get("/me")
+def get_current_user(
+    payload: dict = Depends(verify_access_token),
+    db: Session = Depends(get_db)
+):
+    username = payload.get("sub")
+    user = db.query(Officer).filter(Officer.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": str(user.id),
+        "username": user.username,
+        "name": user.name,
+        "role": user.role,
+        "avatar_url": user.avatar_url,
+        "created_at": user.created_at,
+    }

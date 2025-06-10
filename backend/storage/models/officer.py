@@ -3,8 +3,10 @@ from datetime import datetime
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from database import Base
-
+try:
+    from ..database import Base
+except:
+    from database import Base
 class Officer(Base):
     __tablename__ = "officers"
 
@@ -14,6 +16,7 @@ class Officer(Base):
     password = Column(String, nullable=False)  
     avatar_url = Column(String, nullable=True) 
     role = Column(String(20), default="officer", nullable=False)
+    
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     edits = relationship("ViolationVersion", back_populates="officer")

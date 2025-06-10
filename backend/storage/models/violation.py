@@ -3,13 +3,17 @@ from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Float, ForeignKey, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from database import Base
-
+try:
+    from ..database import Base
+except:
+    from database import Base
 class Violation(Base):
     __tablename__ = "violations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     record_id = Column(UUID(as_uuid=True), ForeignKey("camera_records.id"), nullable=False)
+    version_id = Column(UUID(as_uuid=True), ForeignKey("violation_versions.id"), nullable=True)
+    
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
     vehicle_type = Column(String(50), nullable=True)
     violation_type = Column(String(50), nullable=False)
@@ -20,8 +24,23 @@ class Violation(Base):
     lp_image_path = Column(String, nullable=True)
     status = Column(String(20), default="pending", nullable=False)
 
+
     record = relationship("CameraRecord", back_populates="violations")
-    versions = relationship("ViolationVersion", back_populates="violation")
+    
+    versions = relationship(
+        "ViolationVersion",
+        back_populates="violation",
+        cascade="all, delete-orphan",
+        foreign_keys="[ViolationVersion.violation_id]"
+    )
+
+    current_version = relationship(
+        "ViolationVersion",
+        foreign_keys=[version_id],
+        uselist=False
+    )
+
+    ticket = relationship("Ticket", back_populates="violations")
 
 
 class ViolationVersion(Base):
@@ -31,8 +50,13 @@ class ViolationVersion(Base):
     violation_id = Column(UUID(as_uuid=True), ForeignKey("violations.id"), nullable=False)
     officer_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    change_type = Column(String(50), nullable=False) 
-    details = Column(JSON, nullable=True)  
+    change_type = Column(String(50), nullable=False)
+    details = Column(JSON, nullable=True)
 
-    violation = relationship("Violation", back_populates="versions")
+    violation = relationship(
+        "Violation",
+        back_populates="versions",
+        foreign_keys=[violation_id]
+    )
+
     officer = relationship("Officer", back_populates="edits")

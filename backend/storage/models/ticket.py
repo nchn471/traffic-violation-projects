@@ -3,8 +3,10 @@ from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Float, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from database import Base
-
+try:
+    from ..database import Base
+except:
+    from database import Base
 class Ticket(Base):
     __tablename__ = "tickets"
 
@@ -14,6 +16,6 @@ class Ticket(Base):
     amount = Column(Float, nullable=False)
     status = Column(String(20), default="pending", nullable=False)  
     issued_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    violation = relationship("Violation", back_populates="ticket")
+    notes = Column(String(500), nullable=True) 
+    violations = relationship("Violation", back_populates="ticket")
     officer = relationship("Officer", back_populates="tickets")

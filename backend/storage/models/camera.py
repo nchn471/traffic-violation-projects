@@ -3,7 +3,10 @@ from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from database import Base
+try:
+    from ..database import Base
+except:
+    from database import Base
 
 class Camera(Base):
     __tablename__ = "cameras"
