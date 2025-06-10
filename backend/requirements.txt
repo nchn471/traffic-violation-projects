@@ -12,3 +12,4 @@ lap==0.5.12
 python-jose==3.5.0
 pydantic==2.11.3
 passlib==1.7.4
+aiohttp==3.12.12

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from starlette.status import HTTP_200_OK, HTTP_500_INTERNAL_SERVER_ERROR
-from storage.minio_manager import MinIOManager()
+from storage.minio_manager import MinIOManager
 base_router = APIRouter(
     prefix="", 
     tags=["Welcome"],
@@ -44,10 +44,8 @@ base_router = APIRouter()
 async def get_image(file_path: str):
     mc = MinIOManager()
     try:
-        # 🔗 Tạo presigned URL
         url = mc.get_presigned_url(file_path)
 
-        # 📥 Lấy ảnh bằng aiohttp (non-blocking)
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
