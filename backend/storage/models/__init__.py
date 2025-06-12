@@ -1,7 +1,7 @@
 from .camera import Camera, CameraRecord
 from .officer import Officer
 from .violation import Violation, ViolationVersion
-from .ticket import Ticket
+from .ticket import Ticket, TicketVersion
 
 
 __all__ = [
@@ -10,5 +10,6 @@ __all__ = [
     "Officer",
     "Violation",
     "ViolationVersion",
-    "Ticket"
+    "Ticket",
+    "TicketVersion"
 ]

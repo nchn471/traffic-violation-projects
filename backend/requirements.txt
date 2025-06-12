@@ -10,6 +10,7 @@ minio==7.2.15
 confluent-kafka[avro, schemaregistry]==2.10.0
 lap==0.5.12
 python-jose==3.5.0
-pydantic==2.11.3
+pydantic[email]==2.11.3
 passlib==1.7.4
 aiohttp==3.12.12
+weasyprint==65.1

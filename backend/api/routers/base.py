@@ -1,6 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from starlette.status import HTTP_200_OK, HTTP_500_INTERNAL_SERVER_ERROR
 from storage.minio_manager import MinIOManager
+from fastapi.responses import StreamingResponse
+import aiohttp
+import io
+
 base_router = APIRouter(
     prefix="", 
     tags=["Welcome"],
@@ -32,20 +36,11 @@ def root():
             detail="Server Error"
         )
         
-
-from fastapi.responses import StreamingResponse
-import aiohttp
-import io
-
-
-base_router = APIRouter()
-
 @base_router.get("/api/v1/media/{file_path:path}")
 async def get_image(file_path: str):
     mc = MinIOManager()
     try:
         url = mc.get_presigned_url(file_path)
-
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
@@ -54,7 +49,7 @@ async def get_image(file_path: str):
                 content_type = resp.headers.get("Content-Type", "application/octet-stream")
                 content = await resp.read()
                 return StreamingResponse(io.BytesIO(content), media_type=content_type)
-
+        return url
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi server: {e}")
 

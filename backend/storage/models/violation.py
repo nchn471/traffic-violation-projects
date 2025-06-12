@@ -7,6 +7,7 @@ try:
     from ..database import Base
 except:
     from database import Base
+    
 class Violation(Base):
     __tablename__ = "violations"
 

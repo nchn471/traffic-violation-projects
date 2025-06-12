@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import timedelta
 from minio import Minio
 from dotenv import load_dotenv
 import tempfile
@@ -42,6 +42,14 @@ class MinIOManager:
         return minio_path
     
     def get_presigned_url(self, minio_path, expiry=3600):
-        return self.client.presigned_get_object(self.bucket, minio_path, expires=expiry)
+        try:
+            presigned_url = self.client.presigned_get_object(
+                self.bucket,
+                minio_path,
+                expires=timedelta(seconds=expiry)
+            )
+            return presigned_url
 
+        except Exception as e:
+            raise RuntimeError(f"Lỗi tạo presigned URL: {e}")
 

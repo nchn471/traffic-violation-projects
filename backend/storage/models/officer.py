@@ -7,6 +7,7 @@ try:
     from ..database import Base
 except:
     from database import Base
+    
 class Officer(Base):
     __tablename__ = "officers"
 
@@ -21,3 +22,6 @@ class Officer(Base):
 
     edits = relationship("ViolationVersion", back_populates="officer")
     tickets = relationship("Ticket", back_populates="officer")
+    ticket_edits = relationship("TicketVersion", back_populates="officer")
+    
+    
