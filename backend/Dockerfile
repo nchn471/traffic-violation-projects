@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN apt-get update && apt-get install libgl1 libglib2.0-0 -y
+RUN apt-get update && apt-get install libpangocairo-1.0-0 libgl1 libglib2.0-0 -y
 
 RUN python -m venv /venv \
     && /venv/bin/pip install --upgrade pip \
