@@ -1,11 +1,13 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from uuid import UUID
-from typing import Optional
+from datetime import datetime
 
 class OfficerOut(BaseModel):
     id: UUID
     name: str
-    email: Optional[EmailStr] = None
+    username: str
+    role: str
+    created_at: datetime
 
     model_config = {
         "from_attributes": True

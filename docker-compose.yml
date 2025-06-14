@@ -155,7 +155,21 @@ services:
         condition: service_healthy
       schema-registry:
         condition: service_healthy
-        
+
+  frontend:
+    container_name: frontend
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./public:/app/public
+    networks:
+      - violation-net
+
 volumes:
   postgres:
   minio:

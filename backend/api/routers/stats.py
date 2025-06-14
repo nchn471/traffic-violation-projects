@@ -1,18 +1,19 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import func, extract, cast, Date
+
 from storage.database import get_db
-from storage.models import Violation, Camera, CameraRecord
+from storage.models import Violation, Camera
 from api.schemas.stats import (
     StatsOverview, WeeklyViolationStats, WeekdayStats,
     HourlyViolationStats, HourlyStats, ProcessingStats
 )
-from sqlalchemy import func, extract, cast, Date
 from api.utils.auth import verify_access_token
 
 stats_router = APIRouter(
     prefix="/api/v1/stats",
     tags=["Stats"],
-    dependencies=[Depends(verify_access_token)] 
+    dependencies=[Depends(verify_access_token)]
 )
 
 @stats_router.get("/overview", response_model=StatsOverview)
@@ -20,7 +21,7 @@ def get_stats_overview(db: Session = Depends(get_db)):
     total = db.query(Violation).count()
 
     avg_per_day = (
-        db.query(func.count(), cast(Violation.timestamp, Date))
+        db.query(cast(Violation.timestamp, Date))
         .group_by(cast(Violation.timestamp, Date))
         .count()
     )
@@ -37,8 +38,7 @@ def get_stats_overview(db: Session = Depends(get_db)):
 
     by_camera = dict(
         db.query(Camera.name, func.count(Violation.id))
-        .join(CameraRecord, CameraRecord.id == Violation.record_id)
-        .join(Camera, Camera.id == CameraRecord.camera_id)
+        .join(Camera, Camera.id == Violation.camera_id)
         .group_by(Camera.name)
         .all()
     )
@@ -59,7 +59,9 @@ def get_weekday_stats(db: Session = Depends(get_db)):
         .group_by(func.to_char(Violation.timestamp, 'Day'))
         .all()
     )
-    return WeeklyViolationStats(data=[WeekdayStats(weekday=day.strip(), count=c) for day, c in data])
+    return WeeklyViolationStats(data=[
+        WeekdayStats(weekday=day.strip(), count=count) for day, count in data
+    ])
 
 
 @stats_router.get("/by-hour", response_model=HourlyViolationStats)
@@ -70,7 +72,9 @@ def get_hourly_stats(db: Session = Depends(get_db)):
         .order_by("hour")
         .all()
     )
-    return HourlyViolationStats(data=[HourlyStats(hour=int(hour), count=c) for hour, c in data])
+    return HourlyViolationStats(data=[
+        HourlyStats(hour=int(hour), count=count) for hour, count in data
+    ])
 
 
 @stats_router.get("/processing-ratio", response_model=ProcessingStats)

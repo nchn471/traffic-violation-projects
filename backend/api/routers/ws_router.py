@@ -1,4 +1,4 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 import cv2
 import asyncio
 import uuid
@@ -10,6 +10,7 @@ from kafka_handlers.kafka_consumer import KafkaAvroConsumer
 from kafka_handlers.utils import encode_frame, prepare_params
 from dotenv import load_dotenv
 from confluent_kafka import KafkaError, KafkaException
+from api.utils.auth import verify_access_token
 
 load_dotenv()
 
@@ -36,9 +37,13 @@ consumer = KafkaAvroConsumer(
     schema_registry_subject="frames-out-value"
 ).get_consumer()
 
-ws_router = APIRouter()
 
-@ws_router.websocket("/ws/camera")
+ws_router = APIRouter(
+    prefix="/api/v1/ws", 
+    tags=["Websocket"],
+    )
+
+@ws_router.websocket("/camera")
 async def video_websocket(websocket: WebSocket):
     await websocket.accept()
     session_id = str(uuid.uuid4())

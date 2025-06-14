@@ -1,21 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID
+from datetime import datetime
+import io
+import requests
+from fastapi.responses import StreamingResponse
 
 from storage.models import Ticket, Violation, TicketVersion
 from api.schemas.ticket import TicketCreate, TicketOut, TicketUpdate
 from api.utils.auth import verify_access_token
 from storage.database import get_db
-from api.utils.ticket import build_ticket_html, send_email, create_pdf_ticket, get_pdf_ticket
-from datetime import datetime
-import json
+from api.utils.ticket import build_ticket_html, send_email, create_pdf_ticket
 
 ticket_router = APIRouter(
-    prefix="/api/v1/tickets", 
+    prefix="/api/v1/tickets",
     tags=["Tickets"],
     dependencies=[Depends(verify_access_token)]
 )
-
 
 @ticket_router.post("/{violation_id}", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
 def create_ticket(
@@ -28,54 +29,42 @@ def create_ticket(
     if not violation:
         raise HTTPException(status_code=404, detail="Violation not found")
 
-    existing_ticket = db.query(Ticket).filter(Ticket.violation_id == violation_id).first()
-    if existing_ticket:
+    if db.query(Ticket).filter(Ticket.violation_id == violation_id).first():
         raise HTTPException(status_code=400, detail="Ticket already exists for this violation")
-
-    officer_id = token_data.get("id")
 
     new_ticket = Ticket(
         violation_id=violation_id,
-        officer_id=officer_id,
+        officer_id=token_data["id"],
         amount=ticket_in.amount,
         email=ticket_in.email,
         name=ticket_in.name,
         notes=ticket_in.notes,
-        status="pending",
+        status="pending"
     )
-
-    file_path = create_pdf_ticket(new_ticket, violation, ticket_in.name)
-    new_ticket.file_path = file_path
-
     db.add(new_ticket)
+    db.flush()
+
+    version = TicketVersion(
+        ticket_id=new_ticket.id,
+        officer_id=token_data["id"],
+        change_type="create",
+        updated_at=datetime.utcnow(),
+        amount=new_ticket.amount,
+        name=new_ticket.name,
+        email=new_ticket.email,
+        notes=new_ticket.notes,
+        status=new_ticket.status,
+    )
+    db.add(version)
+    db.flush()
+
+    new_ticket.version_id = version.id
     db.commit()
     db.refresh(new_ticket)
     return new_ticket
 
-
-@ticket_router.get("/{ticket_id}/pdf")
-def get_ticket_pdf(ticket_id: UUID, db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not ticket or not ticket.file_path:
-        raise HTTPException(status_code=404, detail="PDF không tồn tại")
-
-    try:
-        url = get_pdf_ticket(ticket.file_path)
-        return url
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Không thể tạo URL: {e}")
-
-
-@ticket_router.get("/{ticket_id}", response_model=TicketOut)
-def get_ticket(ticket_id: UUID, db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-    return ticket
-
-
 @ticket_router.patch("/{ticket_id}", response_model=TicketOut)
-def patch_ticket(
+def update_ticket(
     ticket_id: UUID,
     ticket_in: TicketUpdate,
     db: Session = Depends(get_db),
@@ -85,67 +74,182 @@ def patch_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    before_data = {key: getattr(ticket, key) for key in ticket_in.dict(exclude_unset=True).keys()}
+    update_fields = ticket_in.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="Không có trường nào được cập nhật")
 
-    for key, value in ticket_in.dict(exclude_unset=True).items():
+    for key, value in update_fields.items():
         setattr(ticket, key, value)
 
     version = TicketVersion(
         ticket_id=ticket.id,
-        officer_id=token_data.get("id"),
+        officer_id=token_data["id"],
         change_type="update",
         updated_at=datetime.utcnow(),
-        details=json.dumps({
-            "before": before_data,
-            "after": ticket_in.dict(exclude_unset=True)
-        })
+        amount=ticket.amount,
+        name=ticket.name,
+        email=ticket.email,
+        notes=ticket.notes,
+        status=ticket.status
     )
-
     db.add(version)
     db.flush()
-    ticket.current_version_id = version.id
+
+    ticket.version_id = version.id
     db.commit()
     db.refresh(ticket)
     return ticket
 
-
-@ticket_router.delete("/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_ticket(ticket_id: UUID, db: Session = Depends(get_db)):
+@ticket_router.delete("/{ticket_id}", response_model=TicketOut)
+def archive_ticket(ticket_id: UUID, db: Session = Depends(get_db), token_data: dict = Depends(verify_access_token)):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
+        raise HTTPException(status_code=404, detail="Ticket không tồn tại")
 
-    db.delete(ticket)
+    if ticket.status == "archived":
+        raise HTTPException(status_code=400, detail="Ticket đã bị lưu trữ trước đó")
+
+    ticket.status = "archived"
+
+    version = TicketVersion(
+        ticket_id=ticket.id,
+        officer_id=token_data["id"],
+        change_type="archive",
+        updated_at=datetime.utcnow(),
+        amount=ticket.amount,
+        name=ticket.name,
+        email=ticket.email,
+        notes=ticket.notes,
+        status=ticket.status
+    )
+    db.add(version)
+    db.flush()
+
+    ticket.version_id = version.id
     db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    db.refresh(ticket)
+    return ticket
 
+@ticket_router.post("/{ticket_id}/rollback/{version_id}", response_model=TicketOut)
+def rollback_ticket(ticket_id: UUID, version_id: UUID, db: Session = Depends(get_db), token_data: dict = Depends(verify_access_token)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    version = db.query(TicketVersion).filter(TicketVersion.id == version_id).first()
 
-@ticket_router.post("/{ticket_id}/send")
-def send_ticket(ticket_id: UUID, db: Session = Depends(get_db)):
+    if not ticket or not version:
+        raise HTTPException(status_code=404, detail="Ticket hoặc phiên bản không tồn tại")
+    if version.ticket_id != ticket.id:
+        raise HTTPException(status_code=400, detail="Phiên bản không thuộc về Ticket này")
+    if version.change_type == "rollback":
+        raise HTTPException(status_code=400, detail="Không thể rollback từ một phiên bản rollback")
+
+    ticket.amount = version.amount
+    ticket.name = version.name
+    ticket.email = version.email
+    ticket.notes = version.notes
+    ticket.status = version.status
+
+    rollback_version = TicketVersion(
+        ticket_id=ticket.id,
+        officer_id=token_data["id"],
+        change_type="rollback",
+        updated_at=datetime.utcnow(),
+        amount=ticket.amount,
+        name=ticket.name,
+        email=ticket.email,
+        notes=ticket.notes,
+        status=ticket.status
+    )
+    db.add(rollback_version)
+    db.flush()
+
+    ticket.version_id = rollback_version.id
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+@ticket_router.post("/{ticket_id}/mark-paid", response_model=TicketOut)
+def mark_ticket_paid(ticket_id: UUID, db: Session = Depends(get_db), token_data: dict = Depends(verify_access_token)):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-    if ticket.status != "pending":
-        raise HTTPException(status_code=400, detail=f"Ticket already {ticket.status}")
-    if not ticket.email:
-        raise HTTPException(status_code=400, detail="Ticket is missing recipient email")
+        raise HTTPException(status_code=404, detail="Ticket không tồn tại")
+    if ticket.status != "sent":
+        raise HTTPException(status_code=400, detail="Chỉ ticket đã gửi mới được đánh dấu đã thanh toán")
+
+    ticket.status = "paid"
+
+    version = TicketVersion(
+        ticket_id=ticket.id,
+        officer_id=token_data["id"],
+        change_type="status_update",
+        updated_at=datetime.utcnow(),
+        amount=ticket.amount,
+        name=ticket.name,
+        email=ticket.email,
+        notes=ticket.notes,
+        status=ticket.status,
+        file_path=None
+    )
+    db.add(version)
+    db.flush()
+
+    ticket.version_id = version.id
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+@ticket_router.get("/{ticket_id}/pdf")
+def get_ticket_pdf(ticket_id: UUID, db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket không tồn tại")
 
     violation = db.query(Violation).filter(Violation.id == ticket.violation_id).first()
     if not violation:
-        raise HTTPException(status_code=404, detail="Violation not found")
+        raise HTTPException(status_code=404, detail="Violation không tồn tại")
 
-    html_content = build_ticket_html(ticket, violation)
+    pdf_file = create_pdf_ticket(ticket, violation)
+    return StreamingResponse(io.BytesIO(pdf_file), media_type="application/pdf")
 
-    try:
-        send_email(
-            to_email=ticket.email,
-            subject="Phiếu xử phạt vi phạm giao thông",
-            html_content=html_content,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Không thể gửi email: {e}")
+@ticket_router.get("/{ticket_id}", response_model=TicketOut)
+def get_ticket(ticket_id: UUID, db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket không tồn tại")
+    return ticket
+
+    
+@ticket_router.post("/{ticket_id}/send", response_model=TicketOut)
+def send_ticket_email(ticket_id: UUID, db: Session = Depends(get_db), token_data: dict = Depends(verify_access_token)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket không tồn tại")
+
+    violation = db.query(Violation).filter(Violation.id == ticket.violation_id).first()
+    if not violation:
+        raise HTTPException(status_code=404, detail="Violation không tồn tại")
+
+    pdf_file = create_pdf_ticket(ticket, violation)
 
     ticket.status = "sent"
+
+    html = build_ticket_html(ticket, violation)
+    send_email(ticket.email, "Traffic Violation Ticket", html, pdf_file)
+
+    version = TicketVersion(
+        ticket_id=ticket.id,
+        officer_id=token_data["id"],
+        change_type="send",
+        updated_at=datetime.utcnow(),
+        amount=ticket.amount,
+        name=ticket.name,
+        email=ticket.email,
+        notes=ticket.notes,
+        status=ticket.status,
+    )
+    db.add(version)
+    db.flush()
+
+    ticket.version_id = version.id
     db.commit()
     db.refresh(ticket)
-    return {"message": "Email đã được gửi", "ticket_id": str(ticket.id)}
+    return ticket

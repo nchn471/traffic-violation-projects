@@ -53,3 +53,9 @@ class MinIOManager:
         except Exception as e:
             raise RuntimeError(f"Lỗi tạo presigned URL: {e}")
 
+    def list_file(self, prefix, recursive=True):
+        try:
+            objects = self.client.list_objects(self.bucket, prefix=prefix, recursive=recursive)
+            return [obj.object_name for obj in objects]
+        except Exception as e:
+            raise RuntimeError(f"Lỗi liệt kê file: {e}")

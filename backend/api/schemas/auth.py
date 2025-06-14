@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated
 from pydantic import BaseModel, StringConstraints
 
 class LoginRequest(BaseModel):
@@ -33,4 +33,3 @@ class RegisterRequest(BaseModel):
         StringConstraints(min_length=3, max_length=20)
     ]
     
-    avatar_url: Optional[str] = None

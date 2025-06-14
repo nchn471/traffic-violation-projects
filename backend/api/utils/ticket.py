@@ -14,7 +14,7 @@ SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 API_ENDPOINT = os.getenv("API_ENDPOINT", "http://localhost:8000")
 
 
-def build_ticket_html(ticket, violation, name):
+def build_ticket_html(ticket, violation):
     return f"""
     <html>
     <head>
@@ -80,12 +80,13 @@ def build_ticket_html(ticket, violation, name):
       <h2>BIÊN BẢN VI PHẠM GIAO THÔNG</h2>
 
       <table>
-        <tr><td class="label">Tên người nhận:</td><td>{name}</td></tr>
+        <tr><td class="label">Tên người nhận:</td><td>{ticket.name}</td></tr>
         <tr><td class="label">Biển số xe:</td><td>{violation.license_plate}</td></tr>
         <tr><td class="label">Loại phương tiện:</td><td>{violation.vehicle_type}</td></tr>
         <tr><td class="label">Lỗi vi phạm:</td><td>{violation.violation_type}</td></tr>
         <tr><td class="label">Số tiền phạt:</td><td>{ticket.amount:,.0f} VNĐ</td></tr>
         <tr><td class="label">Thời gian vi phạm:</td><td>{violation.timestamp.strftime('%d/%m/%Y %H:%M')}</td></tr>
+
       </table>
 
       <div class="image-section">
@@ -113,18 +114,23 @@ def build_ticket_html(ticket, violation, name):
     </body>
     </html>
     """
+    
+import mimetypes
 
-
-def send_email(to_email: str, subject: str, html_content: str):
+def send_email(to_email: str, subject: str, html_content: str, attachment: bytes = None, filename: str = "ticket.pdf"):
     if not SENDER_EMAIL or not SENDER_PASSWORD:
-        raise RuntimeError("Missing email credentials. Please check your .env file.")
+        raise RuntimeError("Missing email credentials.")
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = SENDER_EMAIL  
+    msg["From"] = SENDER_EMAIL
     msg["To"] = to_email
     msg.set_content("Vui lòng mở email trong trình duyệt để xem nội dung đầy đủ.", subtype="plain")
     msg.add_alternative(html_content, subtype="html")
+
+    if attachment:
+        maintype, subtype = mimetypes.guess_type(filename)[0].split("/")
+        msg.add_attachment(attachment, maintype=maintype, subtype=subtype, filename=filename)
 
     try:
         with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
@@ -136,20 +142,27 @@ def send_email(to_email: str, subject: str, html_content: str):
         print("Gửi email thất bại:", e)
         raise
 
-def create_pdf_ticket(ticket, violation, name) -> str:
-    html_content = build_ticket_html(ticket, violation, name)
+# def create_pdf_ticket(ticket, violation) -> str:
+#     html_content = build_ticket_html(ticket, violation)
+
+#     with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+#         HTML(string=html_content).write_pdf(tmp.name)
+
+#         minio_path = f"tickets/{ticket.id}.pdf"
+#         mc = MinIOManager()
+#         mc.upload_file(tmp.name, minio_path)  
+
+#         return minio_path  
+
+# def get_pdf_ticket(ticket):
+#     mc = MinIOManager()
+#     url = mc.get_presigned_url(ticket.file_path)
+#     return url
+
+def create_pdf_ticket(ticket, violation) -> bytes:
+    html_content = build_ticket_html(ticket, violation)
 
     with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
         HTML(string=html_content).write_pdf(tmp.name)
-
-        minio_path = f"tickets/{ticket.id}.pdf"
-        mc = MinIOManager()
-        mc.upload_file(tmp.name, minio_path)  
-
-        return minio_path  
-
-def get_pdf_ticket(ticket):
-    mc = MinIOManager()
-    url = mc.get_presigned_url(ticket.file_path)
-    return url
-    
+        with open(tmp.name, "rb") as f:
+            return f.read()  

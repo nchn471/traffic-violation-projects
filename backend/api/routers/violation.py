@@ -81,20 +81,26 @@ def update_violation(
     if not violation:
         raise HTTPException(status_code=404, detail="Violation không tồn tại")
 
-    before_data = {key: getattr(violation, key) for key in data.dict(exclude_unset=True).keys()}
-
-    for key, value in data.dict(exclude_unset=True).items():
-        setattr(violation, key, value)
-
-    version = ViolationVersion(
+    snapshot = ViolationVersion(
         violation_id=violation.id,
         officer_id=token_data.get("id"),
         change_type="update",
-        details={"before": before_data, "after": data.dict(exclude_unset=True)},
+        timestamp=violation.timestamp,
+        vehicle_type=violation.vehicle_type,
+        violation_type=violation.violation_type,
+        license_plate=violation.license_plate,
+        confidence=violation.confidence,
+        frame_image_path=violation.frame_image_path,
+        vehicle_image_path=violation.vehicle_image_path,
+        lp_image_path=violation.lp_image_path,
     )
-    db.add(version)
-    db.flush()
-    violation.version_id = version.id
+    db.add(snapshot)
+    db.flush()  
+
+    for key, value in data.dict(exclude_unset=True).items():
+        setattr(violation, key, value)
+    
+    violation.version_id = snapshot.id  
     db.commit()
     db.refresh(violation)
     return violation
@@ -113,16 +119,23 @@ def archive_violation(
     if violation.status == "archived":
         raise HTTPException(status_code=400, detail="Violation đã bị lưu trữ trước đó")
 
-    version = ViolationVersion(
+    snapshot = ViolationVersion(
         violation_id=violation.id,
         officer_id=token_data.get("id"),
         change_type="archive",
-        details={"before": violation.status, "after": "archived"},
+        timestamp=violation.timestamp,
+        vehicle_type=violation.vehicle_type,
+        violation_type=violation.violation_type,
+        license_plate=violation.license_plate,
+        confidence=violation.confidence,
+        frame_image_path=violation.frame_image_path,
+        vehicle_image_path=violation.vehicle_image_path,
+        lp_image_path=violation.lp_image_path,
     )
+    db.add(snapshot)
+    db.flush() 
     violation.status = "archived"
-    db.add(version)
-    db.flush()
-    violation.version_id = version.id
+    violation.version_id = snapshot.id
     db.commit()
     db.refresh(violation)
     return violation
@@ -146,6 +159,7 @@ def get_violation_history(
     return versions
 
 
+
 @violation_router.post("/{violation_id}/rollback/{version_id}", response_model=ViolationOut)
 def rollback_violation(
     violation_id: UUID,
@@ -156,36 +170,43 @@ def rollback_violation(
     violation = db.query(Violation).filter(Violation.id == violation_id).first()
     version = db.query(ViolationVersion).filter(ViolationVersion.id == version_id).first()
     
-    if version.change_type == "rollback":
-        raise HTTPException(status_code=400, detail="Không thể rollback từ một phiên bản rollback.")
-
     if not violation or not version:
         raise HTTPException(status_code=404, detail="Violation hoặc phiên bản không tồn tại")
 
     if version.violation_id != violation.id:
         raise HTTPException(status_code=400, detail="Phiên bản không thuộc về Violation này")
-    
-    before_data = version.details.get("before", {})
-    if version.change_type == "archive":
-        violation.status = version.details.get("before")
-    else:
-        for key, value in before_data.items():
-            setattr(violation, key, value)
 
-    rollback_version = ViolationVersion(
+    if version.change_type == "rollback":
+        raise HTTPException(status_code=400, detail="Không thể rollback từ một phiên bản rollback.")
+
+    # Tạo snapshot trước khi rollback
+    snapshot = ViolationVersion(
         violation_id=violation.id,
         officer_id=token_data.get("id"),
         change_type="rollback",
-        details={
-            "rolled_back_from": str(version.id), 
-            "restored_values": before_data
-        }
+        timestamp=violation.timestamp,
+        vehicle_type=violation.vehicle_type,
+        violation_type=violation.violation_type,
+        license_plate=violation.license_plate,
+        confidence=violation.confidence,
+        frame_image_path=violation.frame_image_path,
+        vehicle_image_path=violation.vehicle_image_path,
+        lp_image_path=violation.lp_image_path,
     )
-
-    db.add(rollback_version)
+    db.add(snapshot)
     db.flush()
-    violation.version_id = rollback_version.id
+
+    # Rollback dữ liệu từ version đã chọn
+    violation.timestamp = version.timestamp
+    violation.vehicle_type = version.vehicle_type
+    violation.violation_type = version.violation_type
+    violation.license_plate = version.license_plate
+    violation.confidence = version.confidence
+    violation.frame_image_path = version.frame_image_path
+    violation.vehicle_image_path = version.vehicle_image_path
+    violation.lp_image_path = version.lp_image_path
+
+    violation.version_id = snapshot.id
     db.commit()
     db.refresh(violation)
     return violation
-
