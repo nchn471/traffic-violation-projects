@@ -9,6 +9,8 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    access_token_expires_in: int  
+    refresh_token_expires_in: int 
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
@@ -32,4 +34,9 @@ class RegisterRequest(BaseModel):
         str,
         StringConstraints(min_length=3, max_length=20)
     ]
+
+class TokenPayload(BaseModel):
+    id: str
+    sub: str
+    role: str
     

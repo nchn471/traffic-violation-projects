@@ -1,22 +1,22 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
+from datetime import timedelta
 
 from storage.database import get_db
 from storage.models.officer import Officer
 from api.schemas.auth import (
     LoginRequest,
-    RegisterRequest,
     TokenResponse,
-    RefreshTokenRequest
+    RefreshTokenRequest,
+    TokenPayload,
 )
 from api.schemas.officer import OfficerOut
 from api.utils.auth import (
     create_access_token,
     create_refresh_token,
     verify_refresh_token,
-    verify_access_token,
     authenticate_user,
-    hash_password
+    get_current_user,
 )
 
 auth_router = APIRouter(
@@ -24,6 +24,8 @@ auth_router = APIRouter(
     tags=["Authentication"],
 )
 
+ACCESS_TOKEN_EXPIRE = timedelta(minutes=60)
+REFRESH_TOKEN_EXPIRE = timedelta(days=7)
 
 @auth_router.post("/login", response_model=TokenResponse)
 def login(form_data: LoginRequest, db: Session = Depends(get_db)):
@@ -36,42 +38,16 @@ def login(form_data: LoginRequest, db: Session = Depends(get_db)):
 
     token_data = {
         "id": str(user.id),
-        "sub": user.username
+        "sub": user.username,
+        "role": user.role
     }
 
     return TokenResponse(
-        access_token=create_access_token(token_data),
-        refresh_token=create_refresh_token(token_data),
-        token_type="bearer"
-    )
-
-
-@auth_router.post("/register", response_model=TokenResponse)
-def register(data: RegisterRequest, db: Session = Depends(get_db)):
-    if db.query(Officer).filter(Officer.username == data.username).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken"
-        )
-
-    new_user = Officer(
-        username=data.username,
-        hashed_password=hash_password(data.password),
-        name=data.name or "New Officer",
-        role=data.role
-    )
-    db.add(new_user)
-    db.commit()
-
-    token_data = {
-        "id": str(new_user.id),
-        "sub": new_user.username
-    }
-
-    return TokenResponse(
-        access_token=create_access_token(token_data),
-        refresh_token=create_refresh_token(token_data),
-        token_type="bearer"
+        access_token=create_access_token(token_data,ACCESS_TOKEN_EXPIRE),
+        refresh_token=create_refresh_token(token_data, REFRESH_TOKEN_EXPIRE),
+        token_type="bearer",
+        access_token_expires_in=int(ACCESS_TOKEN_EXPIRE.total_seconds()),
+        refresh_token_expires_in=int(REFRESH_TOKEN_EXPIRE.total_seconds())
     )
 
 
@@ -84,27 +60,26 @@ def refresh_token(token_req: RefreshTokenRequest):
             detail="Invalid refresh token"
         )
 
-    username = payload.get("sub")
-    if not username:
+    try:
+        token_data = TokenPayload(**payload).model_dump()
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload"
         )
 
     return TokenResponse(
-        access_token=create_access_token({"sub": username}),
-        refresh_token=create_refresh_token({"sub": username}),
-        token_type="bearer"
+        access_token=create_access_token(token_data,ACCESS_TOKEN_EXPIRE),
+        refresh_token=create_refresh_token(token_data, REFRESH_TOKEN_EXPIRE),
+        token_type="bearer",
+        access_token_expires_in=int(ACCESS_TOKEN_EXPIRE.total_seconds()),
+        refresh_token_expires_in=int(REFRESH_TOKEN_EXPIRE.total_seconds())
     )
 
-
 @auth_router.get("/me", response_model=OfficerOut)
-def get_current_user(
-    payload: dict = Depends(verify_access_token),
-    db: Session = Depends(get_db)
+def get_me(
+    current_user: Officer = Depends(get_current_user),
 ):
-    username = payload.get("sub")
-    user = db.query(Officer).filter(Officer.username == username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+    return current_user
+
+

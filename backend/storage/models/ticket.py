@@ -59,6 +59,7 @@ class TicketVersion(Base):
 
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     change_type = Column(String(50), nullable=False)
+    source_id = Column(UUID(as_uuid=True), ForeignKey("ticket_versions.id"), nullable=True)
 
     # Relationships
     ticket = relationship("Ticket", back_populates="versions", foreign_keys=[ticket_id])

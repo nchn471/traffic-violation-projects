@@ -65,6 +65,10 @@ class ViolationVersion(Base):
 
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     change_type = Column(String(50), nullable=False)
+    
+    notes = Column(String(255), nullable=True) 
+    source_id = Column(UUID(as_uuid=True), ForeignKey("violation_versions.id"), nullable=True)
+    status = Column(String(20), nullable=True)
 
     # Relationships
     violation = relationship(

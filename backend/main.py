@@ -6,6 +6,8 @@ from api.routers.violation import violation_router
 from api.routers.stats import stats_router
 from api.routers.ticket import ticket_router
 from api.routers.camera import camera_router
+from api.routers.officer import officer_router
+from api.routers.media import media_router
 
 from dotenv import load_dotenv
 
@@ -29,6 +31,8 @@ app.include_router(camera_router)
 app.include_router(violation_router)
 app.include_router(stats_router)
 app.include_router(ticket_router)
+app.include_router(officer_router)
+app.include_router(media_router)
 
 # # Websocket
 app.include_router(ws_router)

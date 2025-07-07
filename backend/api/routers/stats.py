@@ -8,12 +8,12 @@ from api.schemas.stats import (
     StatsOverview, WeeklyViolationStats, WeekdayStats,
     HourlyViolationStats, HourlyStats, ProcessingStats
 )
-from api.utils.auth import verify_access_token
+from api.utils.auth import require_all
 
 stats_router = APIRouter(
     prefix="/api/v1/stats",
     tags=["Stats"],
-    dependencies=[Depends(verify_access_token)]
+    dependencies=[Depends(require_all)]
 )
 
 @stats_router.get("/overview", response_model=StatsOverview)

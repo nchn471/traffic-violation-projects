@@ -2,7 +2,8 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
-
+from api.schemas.camera import CameraOut
+from api.schemas.officer import OfficerOut
 
 class ViolationBase(BaseModel):
     camera_id: UUID
@@ -34,15 +35,16 @@ class ViolationUpdate(BaseModel):
     frame_image_path: Optional[str] = None
     vehicle_image_path: Optional[str] = None
     lp_image_path: Optional[str] = None
+    notes: Optional[str] = None  
 
     model_config = {
         "from_attributes": True
     }
 
-
 class ViolationOut(ViolationBase):
     id: UUID
     version_id: Optional[UUID]
+    camera: Optional[CameraOut] = None
 
     model_config = {
         "from_attributes": True
@@ -63,6 +65,13 @@ class ViolationVersionOut(BaseModel):
     lp_image_path: Optional[str]
     updated_at: datetime
     change_type: str
+    status: Optional[str] = None
+
+    notes: Optional[str] = None
+    source_id: Optional[UUID] = None
+    
+    camera: Optional[CameraOut] = None
+    officer: Optional[OfficerOut] = None
 
     model_config = {
         "from_attributes": True
@@ -87,3 +96,6 @@ class PaginatedViolations(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+class ViolationActionRequest(BaseModel):
+    notes: Optional[str] = None

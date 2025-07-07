@@ -7,6 +7,7 @@ from storage.models.camera import Camera
 from api.schemas.camera import CameraCreate, CameraOut, CameraUpdate
 from storage.database import get_db
 from storage.minio_manager import MinIOManager
+
 camera_router = APIRouter(prefix="/api/v1/cameras", tags=["Cameras"])
 
 
