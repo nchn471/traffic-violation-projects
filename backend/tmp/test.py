@@ -15,7 +15,7 @@ def draw_polygon(frame, points):
         cv2.polylines(frame, [np.array(points)], isClosed=True, color=(0, 255, 0), thickness=2)
 
 if __name__ == "__main__":
-    cap = cv2.VideoCapture("backend/video/La-Khê-Hà_Đông.mp4")
+    cap = cv2.VideoCapture("backend/tmp/video/La-Khê-Hà_Đông.mp4")
     ret, frame = cap.read()
     cap.release()
 

@@ -92,26 +92,26 @@ class DetectConsumer(KafkaAvroConsumer):
             self.ws_producer.publish(result, key=session_id)
             self.ws_producer.producer.poll(0)
 
-            if violations:
-                for violation in violations:
-                    violation_payload = {
-                        "violation_type": violation.get("violation_type"),
-                        "vehicle_type": violation.get("vehicle_type"),
-                        "confidence": violation.get("confidence"),
-                        "location": violation.get("location"),
-                        "timestamp": timestamp,  
-                    }
+            # if violations:
+            #     for violation in violations:
+            #         violation_payload = {
+            #             "violation_type": violation.get("violation_type"),
+            #             "vehicle_type": violation.get("vehicle_type"),
+            #             "confidence": violation.get("confidence"),
+            #             "location": violation.get("location"),
+            #             "timestamp": timestamp,  
+            #         }
 
-                    violation_frame_bytes = encode_frame(violation.get("violation_frame"))
-                    if violation_frame_bytes:
-                        violation_payload["violation_frame"] = violation_frame_bytes
+            #         violation_frame_bytes = encode_frame(violation.get("violation_frame"))
+            #         if violation_frame_bytes:
+            #             violation_payload["violation_frame"] = violation_frame_bytes
 
-                    vehicle_frame_bytes = encode_frame(violation.get("vehicle_frame"))
-                    if vehicle_frame_bytes:
-                        violation_payload["vehicle_frame"] = vehicle_frame_bytes
+            #         vehicle_frame_bytes = encode_frame(violation.get("vehicle_frame"))
+            #         if vehicle_frame_bytes:
+            #             violation_payload["vehicle_frame"] = vehicle_frame_bytes
 
-                    self.record_producer.publish(violation_payload, key=session_id)
-                    self.record_producer.producer.poll(0)
+            #         self.record_producer.publish(violation_payload, key=session_id)
+            #         self.record_producer.producer.poll(0)
 
         
         except Exception as e:

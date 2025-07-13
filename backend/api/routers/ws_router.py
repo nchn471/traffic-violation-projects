@@ -1,4 +1,4 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import cv2
 import asyncio
 import uuid
@@ -10,7 +10,6 @@ from kafka_handlers.kafka_consumer import KafkaAvroConsumer
 from kafka_handlers.utils import encode_frame, prepare_params
 from dotenv import load_dotenv
 from confluent_kafka import KafkaError, KafkaException
-from api.utils.auth import verify_access_token
 
 load_dotenv()
 

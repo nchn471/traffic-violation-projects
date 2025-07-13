@@ -6,13 +6,13 @@ from confluent_kafka import DeserializingConsumer, KafkaException, KafkaError
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroDeserializer
 from confluent_kafka.serialization import StringDeserializer
-
+import random 
 # Load biến môi trường
 load_dotenv()
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_EXTERNAL_SERVERS")
 SCHEMA_REGISTRY_URL = "http://localhost:8081"
 TOPIC = "frames-out"
-GROUP_ID = "ws-consumers"
+GROUP_ID = f"ws-consumers-{random.randint(1,1000)}"
 SUBJECT = "frames-out-value"
 
 def create_consumer():
@@ -41,7 +41,7 @@ def display_frame(frame):
     """Hiển thị frame với OpenCV."""
     cv2.imshow('Processed Frame', frame)
     key = cv2.waitKey(1)
-    return key == 27 or key == ord('q')  # ESC hoặc Q để thoát
+    return key == 27 or key == ord('q')  
 
 def main():
     print("🎥 Kafka Avro Consumer Started - Waiting for frames...")

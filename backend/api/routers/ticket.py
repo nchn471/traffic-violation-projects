@@ -21,7 +21,7 @@ ticket_router = APIRouter(
 def create_ticket(
     ticket_in: TicketCreate = Body(...),
     db: Session = Depends(get_db),
-    token_data: dict = Depends(require_all),
+    officer: dict = Depends(require_all),
 ):
     
     violation = db.query(Violation).filter(Violation.id == ticket_in.violation_id).first()
@@ -37,7 +37,7 @@ def create_ticket(
 
     new_ticket = Ticket(
         violation_id=ticket_in.violation_id,
-        officer_id=token_data["id"],
+        officer_id=officer.id,
         amount=ticket_in.amount,
         email=ticket_in.email,
         name=ticket_in.name,
@@ -49,7 +49,7 @@ def create_ticket(
 
     version = TicketVersion(
         ticket_id=new_ticket.id,
-        officer_id=token_data["id"],
+        officer_id=officer.id,
         change_type="create",
         updated_at=datetime.now(timezone.utc),
         amount=new_ticket.amount,
@@ -85,7 +85,7 @@ def update_ticket(
     ticket_id: UUID,
     ticket_in: TicketUpdate,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(require_all)
+    officer: dict = Depends(require_all)
 ):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
@@ -103,14 +103,15 @@ def update_ticket(
 
     version = TicketVersion(
         ticket_id=ticket.id,
-        officer_id=token_data["id"],
+        officer_id=officer.id,
         change_type="update",
         updated_at=datetime.now(timezone.utc),
         amount=ticket.amount,
         name=ticket.name,
         email=ticket.email,
         notes=ticket.notes,
-        status=ticket.status
+        status=ticket.status,
+        source_id=ticket.version_id
     )
     db.add(version)
     db.flush()
@@ -124,7 +125,7 @@ def update_ticket(
 def archive_ticket(
     ticket_id: UUID,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(require_admin),
+    officer: dict = Depends(require_admin),
 ):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
@@ -137,7 +138,7 @@ def archive_ticket(
 
     version = TicketVersion(
         ticket_id=ticket.id,
-        officer_id=token_data["id"],
+        officer_id=officer.id,
         change_type="archive",
         updated_at=datetime.now(timezone.utc),
         amount=ticket.amount,
@@ -177,7 +178,7 @@ def rollback_ticket(
     ticket_id: UUID,
     version_id: UUID,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(require_admin),
+    officer: dict = Depends(require_admin),
 ):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
@@ -201,7 +202,7 @@ def rollback_ticket(
 
     rollback_version = TicketVersion(
         ticket_id=ticket.id,
-        officer_id=token_data["id"],
+        officer_id=officer.id,
         change_type="rollback",
         updated_at=datetime.now(timezone.utc),
         amount=ticket.amount,
@@ -223,7 +224,7 @@ def rollback_ticket(
 def mark_ticket_paid(
     ticket_id: UUID,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(require_all)
+    officer: dict = Depends(require_all)
 ):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
@@ -242,7 +243,7 @@ def mark_ticket_paid(
 
     version = TicketVersion(
         ticket_id=ticket.id,
-        officer_id=token_data["id"],
+        officer_id=officer.id,
         change_type="status_update",
         updated_at=datetime.now(timezone.utc),
         amount=ticket.amount,
@@ -250,6 +251,7 @@ def mark_ticket_paid(
         email=ticket.email,
         notes=ticket.notes,
         status=ticket.status,
+        source_id=ticket.version_id
     )
     db.add(version)
     db.flush()
@@ -289,7 +291,7 @@ def get_ticket_pdf(
 def send_ticket_email(
     ticket_id: UUID,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(require_all)
+    officer: dict = Depends(require_all)
 ):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
@@ -310,7 +312,7 @@ def send_ticket_email(
 
     version = TicketVersion(
         ticket_id=ticket.id,
-        officer_id=token_data["id"],
+        officer_id=officer.id,
         change_type="send",
         updated_at=datetime.now(timezone.utc),
         amount=ticket.amount,
@@ -318,6 +320,7 @@ def send_ticket_email(
         email=ticket.email,
         notes=ticket.notes,
         status=ticket.status,
+        source_id=ticket.version_id
     )
     db.add(version)
     db.flush()

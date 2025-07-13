@@ -88,27 +88,32 @@ video_path = minio_client.get_file(prepared_params['video'])
 cap = cv2.VideoCapture(video_path)
 
 session_id = str(uuid.uuid4())
-i=0
+frame_skip = 5  # gửi 1 frame mỗi 5 frame
+
+i = 0
+sent = 0
 while cap.isOpened():
-    if i>10:
-        print("Stop, Enough Frame For Test")
-        break 
     ret, frame = cap.read()
     if not ret:
         break
-    
-    _, buffer = cv2.imencode(".jpg", frame)
-    encoded_frame = buffer.tobytes() 
-    message = {
-        "session_id": session_id,
-        "frame": encoded_frame,
-        "timestamp" : str(datetime.now()),
-        "params": prepared_params
-    }
-    i+=1
-    producer.publish(value=message, key=session_id)
-    producer.producer.poll(0)
-    
-producer.producer.flush()
 
-print(f"Total Frame: {i}")
+    if i % frame_skip == 0:
+        _, buffer = cv2.imencode(".jpg", frame)
+        encoded_frame = buffer.tobytes() 
+        message = {
+            "session_id": session_id,
+            "frame": encoded_frame,
+            "timestamp" : str(datetime.now()),
+            "params": prepared_params
+        }
+        producer.publish(value=message, key=session_id)
+        producer.producer.poll(0)
+        sent += 1
+
+    i += 1
+    if sent > 500:
+        print("Stop, Enough Frame For Test")
+        break
+
+producer.producer.flush()
+print(f"Total Frames Read: {i}, Frames Sent: {sent}")

@@ -27,7 +27,7 @@ def get_stats_overview(db: Session = Depends(get_db)):
     )
     avg = total / avg_per_day if avg_per_day else 0
 
-    processed = db.query(Violation).filter(Violation.status == "processed").count()
+    processed = db.query(Violation).filter(Violation.status == "done").count()
     ratio = processed / total if total else 0
 
     by_type = dict(
@@ -61,7 +61,7 @@ def get_weekday_stats(db: Session = Depends(get_db)):
     )
     return WeeklyViolationStats(data=[
         WeekdayStats(weekday=day.strip(), count=count) for day, count in data
-    ])
+    ])  
 
 
 @stats_router.get("/by-hour", response_model=HourlyViolationStats)
@@ -80,7 +80,7 @@ def get_hourly_stats(db: Session = Depends(get_db)):
 @stats_router.get("/processing-ratio", response_model=ProcessingStats)
 def get_processing_ratio(db: Session = Depends(get_db)):
     total = db.query(Violation).count()
-    processed = db.query(Violation).filter(Violation.status == "processed").count()
+    processed = db.query(Violation).filter(Violation.status == "done").count()
     unprocessed = total - processed
     ratio = processed / total if total else 0
 

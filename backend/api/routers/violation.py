@@ -13,7 +13,7 @@ from api.schemas.violation import (
     Pagination,
     ViolationActionRequest
 )
-from api.utils.auth import verify_access_token, require_all, require_admin
+from api.utils.auth import require_all, require_admin
 from storage.database import get_db
 from datetime import datetime
 
@@ -116,13 +116,13 @@ def update_violation(
     violation_id: UUID,
     data: ViolationUpdate,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(require_all),
+    officer: dict = Depends(require_all),
 ):
     violation = db.query(Violation).filter(Violation.id == violation_id).first()
     if not violation:
         raise HTTPException(status_code=404, detail="Violation not found")
 
-    officer_id = token_data.get("id")
+    officer_id = officer.id
     if not officer_id:
         raise HTTPException(status_code=401, detail="Missing or invalid token")
 
@@ -162,8 +162,9 @@ def update_violation(
 @violation_router.delete("/{violation_id}", response_model=ViolationOut)
 def archive_violation(
     violation_id: UUID,
+    payload: ViolationActionRequest,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(require_admin),
+    officer: dict = Depends(require_admin),
 ):
     violation = db.query(Violation).filter(Violation.id == violation_id).first()
     if not violation:
@@ -174,7 +175,7 @@ def archive_violation(
 
     snapshot = ViolationVersion(
         violation_id=violation.id,
-        officer_id=token_data.get("id"),
+        officer_id=officer.id,
         change_type="archive",
         timestamp=violation.timestamp,
         vehicle_type=violation.vehicle_type,
@@ -185,6 +186,8 @@ def archive_violation(
         vehicle_image_path=violation.vehicle_image_path,
         lp_image_path=violation.lp_image_path,
         status="archived",
+        source_id=violation.version_id,
+        notes=payload.notes
     )
     db.add(snapshot)
     db.flush()
@@ -222,13 +225,13 @@ def get_violation_history(
 
 
 @violation_router.post(
-    "/{violation_id}/rollback/{version_id}", response_model=ViolationOut, dependencies=[Depends(require_admin)]
+    "/{violation_id}/rollback/{version_id}", response_model=ViolationOut
 )
 def rollback_violation(
     violation_id: UUID,
     version_id: UUID,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(verify_access_token),
+    officer: dict = Depends(require_admin),
 ):
     violation = db.query(Violation).filter(Violation.id == violation_id).first()
     version = (
@@ -267,7 +270,7 @@ def rollback_violation(
 
     snapshot = ViolationVersion(
         violation_id=violation.id,
-        officer_id=token_data.get("id"),
+        officer_id=officer.id,
         change_type="rollback",
         timestamp=violation.timestamp,
         vehicle_type=violation.vehicle_type,
@@ -295,7 +298,7 @@ def approve_violation(
     violation_id: UUID,
     payload: ViolationActionRequest,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(require_all),
+    officer: dict = Depends(require_all),
 ):
     violation = db.query(Violation).filter(Violation.id == violation_id).first()
     if not violation:
@@ -309,7 +312,7 @@ def approve_violation(
 
     snapshot = ViolationVersion(
         violation_id=violation.id,
-        officer_id=token_data.get("id"),
+        officer_id=officer.id,
         change_type="approve",
         notes=payload.notes,  
         timestamp=violation.timestamp,
@@ -320,6 +323,7 @@ def approve_violation(
         frame_image_path=violation.frame_image_path,
         vehicle_image_path=violation.vehicle_image_path,
         lp_image_path=violation.lp_image_path,
+        source_id=violation.version_id,
         status="approved",
     )
     db.add(snapshot)
@@ -330,12 +334,12 @@ def approve_violation(
     db.refresh(violation)
     return violation
 
-@violation_router.patch("/{violation_id}/reject", response_model=ViolationOut, dependencies=[Depends(require_admin)])
+@violation_router.patch("/{violation_id}/reject", response_model=ViolationOut)
 def reject_violation(
     violation_id: UUID,
     payload: ViolationActionRequest,
     db: Session = Depends(get_db),
-    token_data: dict = Depends(verify_access_token),
+    officer: dict = Depends(require_all),
 ):
     violation = db.query(Violation).filter(Violation.id == violation_id).first()
     if not violation:
@@ -349,7 +353,7 @@ def reject_violation(
 
     snapshot = ViolationVersion(
         violation_id=violation.id,
-        officer_id=token_data.get("id"),
+        officer_id=officer.id,
         change_type="reject",
         notes=payload.notes,
         timestamp=violation.timestamp,
@@ -361,6 +365,7 @@ def reject_violation(
         vehicle_image_path=violation.vehicle_image_path,
         lp_image_path=violation.lp_image_path,
         status="rejected",
+        source_id=violation.version_id
     )
     db.add(snapshot)
     db.flush()
