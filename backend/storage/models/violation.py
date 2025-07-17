@@ -51,7 +51,7 @@ class ViolationVersion(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     violation_id = Column(UUID(as_uuid=True), ForeignKey("violations.id"), nullable=False)
-    officer_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
+    officer_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=True)
 
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
     vehicle_type = Column(String(50), nullable=True)

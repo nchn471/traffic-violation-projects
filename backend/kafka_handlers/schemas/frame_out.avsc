@@ -8,8 +8,19 @@
       "type": "string"
     },
     {
-      "name": "processed_frame",
-      "type": "bytes"
+      "name": "camera_id",
+      "type": "string"
+    },
+    {
+      "name": "timestamp",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    },
+    {
+      "name": "processed_frame_url",
+      "type": "string"
     }
   ]
 }

@@ -27,15 +27,15 @@ class MinIOManager:
         if not self.client.bucket_exists(self.bucket):
             self.client.make_bucket(self.bucket)
 
-    def get_file(self, minio_path):
-        
-        temp_dir = tempfile.gettempdir()
-        local_path = os.path.join(temp_dir, os.path.basename(minio_path))
+    def get_file(self, minio_path, tmp_dir=None):
+        if tmp_dir is None:
+            tmp_dir = tempfile.gettempdir()
+            
+        local_path = os.path.join(tmp_dir, os.path.basename(minio_path))
 
-        if not os.path.exists(local_path):
-            self.client.fget_object(self.bucket, minio_path, local_path)
-
+        self.client.fget_object(self.bucket, minio_path, local_path)
         return local_path
+
 
     def upload_file(self, local_path, minio_path):
         self.client.fput_object(self.bucket, minio_path, local_path)

@@ -4,10 +4,9 @@ import cv2
 import numpy as np
 
 class FrameProcessor:
-    def __init__(self, detector, params):
+    def __init__(self, detector, roi):
         self.detector = detector
-        self.params = params
-        self.roi = np.array(params['roi'], dtype=np.int32)  
+        self.roi = np.array(roi, dtype=np.int32)  
         
     def extract_roi(self, frame, buffer = 10):
         mask = np.zeros(frame.shape[:2], dtype=np.uint8)

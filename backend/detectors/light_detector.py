@@ -22,8 +22,8 @@ def is_red(frame, light_roi, threshold=0.008):
 
 
 class LightDetector(BaseDetector):
-    def __init__(self, vehicle_path, minio_client, params):
-        super().__init__(minio_client, params)
+    def __init__(self, vehicle_path, minio_client, config):
+        super().__init__(minio_client, config)
         self.model = self.load_model(vehicle_path)
         self.track_states = {}
         self.violation_status = {}
@@ -40,7 +40,7 @@ class LightDetector(BaseDetector):
         )[0]    
         violations = []
         original_frame = np.copy(frame)
-        light_roi = self.params['light_roi']
+        light_roi = self.config['light_roi']
         is_red_light = is_red(frame, light_roi)
         light_label = 'RED' if is_red_light else 'GREEN'
         light_color = self.RED_BGR if is_red_light else self.GREEN_BGR
@@ -48,7 +48,7 @@ class LightDetector(BaseDetector):
         cv2.polylines(frame, [np.array(light_roi, dtype=np.int32)], True, light_color, 2)
         cv2.putText(frame, f"Light: {light_label}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, light_color, 2)
 
-        stop_line = self.params['stop_line']
+        stop_line = self.config['stop_line']
         cv2.line(frame, stop_line[0], stop_line[1], self.YELLOW_BGR, 2)
         y_line = (stop_line[0][1] + stop_line[1][1]) // 2
         y_buffer = 30
@@ -109,10 +109,10 @@ class LightDetector(BaseDetector):
 
 
                 violation = {
-                    "violation_type" : "cross_red_light",
+                    "violation_type" : "red_light",
                     "vehicle_type" : vehicle_type,
                     "confidence" : confidence,
-                    "location" : self.params["location"],
+                    "camera_id" : self.config.get("camera_id"),
                     "violation_frame" : frame_copy,
                     "vehicle_frame" : vehicle_img,
                 }

@@ -3,73 +3,75 @@
   "type": "record",
   "name": "FrameIn",
   "fields": [
-    {"name": "session_id", "type": "string"},
-    {"name": "frame", "type": "bytes"},
-    {
-      "name": "params",
+    { "name": "camera_id", "type": "string" },
+    { "name": "session_id", "type": "string" },
+    { 
+      "name": "timestamp", 
       "type": {
-        "type": "record",
-        "name": "Params",
-        "fields": [
-          {"name": "video", "type": "string"},
-          {"name": "location", "type": "string"},
-          {
-            "name": "roi",
-            "type": {
-              "type": "array",
-              "items": {
-                "type": "record",
-                "name": "Point",
-                "fields": [
-                  {"name": "x", "type": "int"},
-                  {"name": "y", "type": "int"}
-                ]
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    },
+    { "name": "frame_url", "type": "string" },
+    { "name": "video_url", "type": "string" },
+    { "name": "detection_type", "type": "string" },
+
+    {
+      "name": "roi",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "Point",
+          "fields": [
+            { "name": "x", "type": "int" },
+            { "name": "y", "type": "int" }
+          ]
+        }
+      }
+    },
+
+    {
+      "name": "stop_line",
+      "type": {
+        "type": "array",
+        "items": "Point"
+      }
+    },
+
+    {
+      "name": "light_roi",
+      "type": {
+        "type": "array",
+        "items": "Point"
+      }
+    },
+
+    {
+      "name": "lanes",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "Lane",
+          "fields": [
+            { "name": "id", "type": "int" },
+            {
+              "name": "polygon",
+              "type": {
+                "type": "array",
+                "items": "Point"
+              }
+            },
+            {
+              "name": "allow_labels",
+              "type": {
+                "type": "array",
+                "items": "string"
               }
             }
-          },
-          {
-            "name": "stop_line",
-            "type": {
-              "type": "array",
-              "items": "Point"
-            }
-          },
-          {
-            "name": "light_roi",
-            "type": {
-              "type": "array",
-              "items": "Point"
-            }
-          },
-          {"name": "detection_type", "type": "string"},
-          {
-            "name": "lanes",
-            "type": {
-              "type": "array",
-              "items": {
-                "type": "record",
-                "name": "Lane",
-                "fields": [
-                  {"name": "id", "type": "int"},
-                  {
-                    "name": "polygon",
-                    "type": {
-                      "type": "array",
-                      "items": "Point"
-                    }
-                  },
-                  {
-                    "name": "allow_labels",
-                    "type": {
-                      "type": "array",
-                      "items": "string"
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        ]
+          ]
+        }
       }
     }
   ]

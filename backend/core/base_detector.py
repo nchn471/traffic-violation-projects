@@ -1,22 +1,22 @@
 import cv2
 from ultralytics import YOLO
 
-
 class BaseDetector():
     
-    def __init__(self, minio_client, params=None):
+    def __init__(self, minio_client, config = None):
         
         self.RED_BGR = (99, 49, 222)
         self.GREEN_BGR = (105, 121, 9)
         self.BLUE_BGR = (186, 82, 15)
         self.WHITE_BGR = (255, 255, 255)
         self.YELLOW_BGR = (0, 255, 255)
+        
         self.minio_client = minio_client
-        if params:
-            self.params = params
+        
+        if config:
+            self.config = config
             
         self.violated_ids = set()
-
 
     def load_model(self, model_path: str):
         print(f"Load Model: {model_path}") 
@@ -34,5 +34,6 @@ class BaseDetector():
             text_bg_bottom = y1
             cv2.rectangle(roi, (x1, text_bg_top), (text_bg_right, text_bg_bottom), color, -1)
             cv2.putText(roi, label, (x1 + 3, y1 - 3), font, font_scale, self.WHITE_BGR, 1, cv2.LINE_AA)
-            
+    
 
+    

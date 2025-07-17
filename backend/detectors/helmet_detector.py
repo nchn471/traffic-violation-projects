@@ -3,8 +3,8 @@ import numpy as np
 
 class HelmetDetector(BaseDetector):
 
-    def __init__(self, vehicle_path, helmet_path, minio_client,params):
-        super().__init__(minio_client,params)
+    def __init__(self, vehicle_path, helmet_path, minio_client, config):
+        super().__init__(minio_client, config)
         self.vehicle_detector = self.load_model(vehicle_path)
         self.helmet_detector = self.load_model(helmet_path)
 
@@ -22,9 +22,12 @@ class HelmetDetector(BaseDetector):
 
         original_frame = np.copy(frame)
         violations = []
+        
         if not hasattr(detection_results, "boxes") or detection_results.boxes is None:
             return
+        
         motorbike_cls_id = next((k for k, v in self.vehicle_detector.names.items() if v == "motorcycle"), None)
+        
         for box in detection_results.boxes:
             if box.id is None:
                 continue
@@ -83,11 +86,12 @@ class HelmetDetector(BaseDetector):
                         font_scale=0.25,
                         thickness=1
                     )
+                    
                     violation = {
+                        "camera_id" : self.config.get("camera_id"),
                         "violation_type" : "no_helmet",
                         "vehicle_type" : vehicle_type,
                         "confidence" : helmet_conf,
-                        "video_id" : self.params["video_id"],
                         "violation_frame" : frame_copy,
                         "vehicle_frame" : vehicle_img,
                     }
