@@ -3,7 +3,7 @@ data
 backend/model
 backend/video
 fe
-.envv
+.env
 *.pyc
 *.pyo
 *.pyd
