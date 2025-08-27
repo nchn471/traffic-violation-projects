@@ -14,15 +14,18 @@ def draw_polygon(frame, points):
     if len(points) > 1:
         cv2.polylines(frame, [np.array(points)], isClosed=True, color=(0, 255, 0), thickness=2)
 
+def resize_frame(frame, width=1280, height=720):
+    return cv2.resize(frame, (width, height))
+
 if __name__ == "__main__":
-    cap = cv2.VideoCapture("backend/tmp/video/La-Khê-Hà_Đông.mp4")
+    cap = cv2.VideoCapture("backend/tmp/cameras/01/video8.mp4")
     ret, frame = cap.read()
     cap.release()
 
     if not ret:
         print("Không đọc được frame.")
         exit()
-
+    frame=resize_frame(frame)
     cv2.namedWindow("Select ROI Polygon")
     cv2.setMouseCallback("Select ROI Polygon", mouse_callback)
 

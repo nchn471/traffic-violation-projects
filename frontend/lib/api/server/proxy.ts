@@ -10,10 +10,7 @@ export async function proxyRequest(
   const accessToken = req.cookies.get("access_token")?.value;
 
   if (!accessToken) {
-    return NextResponse.json(
-      { detail: "Access token required" },
-      { status: 401 }
-    );
+    return NextResponse.json({ detail: "Access token required" }, { status: 401 });
   }
 
   const url = `${API_BASE_URL}${path}`;
@@ -25,6 +22,7 @@ export async function proxyRequest(
 
   let body = options?.body;
 
+  // Auto handle request body if not provided
   if (!body && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
     try {
       const contentType = req.headers.get("content-type") || "";
@@ -38,7 +36,7 @@ export async function proxyRequest(
         headers["Content-Type"] = contentType;
         body = text;
       } else if (contentType.includes("multipart/form-data")) {
-        body = req.body; // Let fetch handle FormData
+        body = req.body; // streaming form-data
       }
     } catch (err) {
       console.warn("Failed to parse request body:", err);
@@ -48,26 +46,26 @@ export async function proxyRequest(
     body = JSON.stringify(body);
   }
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body,
-  });
+  const res = await fetch(url, { method, headers, body });
 
-  // ✅ Nếu response là lỗi thì trả lỗi luôn về FE (bao gồm cả 500, 400,...)
+  const responseContentType = res.headers.get("content-type") || "";
+
+  // Handle errors and pass proper response to client
   if (!res.ok) {
-    const contentType = res.headers.get("content-type") || "";
-    let errorBody = {};
+    let message = `Request failed (${res.status})`;
+    let errorBody: any = null;
 
     try {
-      if (contentType.includes("application/json")) {
+      if (responseContentType.includes("application/json")) {
         errorBody = await res.json();
+        message = errorBody?.detail || errorBody?.message || message;
       } else {
         const text = await res.text();
-        errorBody = { detail: text };
+        message = text || message;
+        errorBody = { detail: message };
       }
-    } catch (_) {
-      errorBody = { detail: `Request failed with status ${res.status}` };
+    } catch {
+      errorBody = { detail: message };
     }
 
     return NextResponse.json(errorBody, { status: res.status });
@@ -77,18 +75,18 @@ export async function proxyRequest(
     return new NextResponse(null, { status: 204 });
   }
 
-  const contentType = res.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
+  // Handle successful response
+  if (responseContentType.includes("application/json")) {
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   }
 
+  // For binary/stream/text fallback
   return new NextResponse(res.body, {
     status: res.status,
     headers: {
-      "Content-Type": contentType,
+      "Content-Type": responseContentType,
       ...Object.fromEntries(res.headers.entries()),
-      ...options?.headers,
     },
   });
 }

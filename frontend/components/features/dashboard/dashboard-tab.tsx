@@ -47,7 +47,7 @@ import {
   type HourlyStats,
   type ProcessingStats,
 } from "@/lib/api/v1/stats";
-
+import { TabLoading } from "@/components/shared/layout/tab-loading/tab-loading";
 const COLORS = [
   "#3b82f6",
   "#10b981",
@@ -169,14 +169,7 @@ export function DashboardTab() {
   }, [fetchStats]);
 
   if (state.isLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="text-muted-foreground">Loading analytics...</p>
-        </div>
-      </div>
-    );
+    return <TabLoading message="Loading analytics..." />;
   }
 
   if (state.error) {

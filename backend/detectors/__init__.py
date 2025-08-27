@@ -1,12 +1,12 @@
 
 from storage.minio_manager import MinIOManager
 
-VEHICLE_MODEL_PATH = 'models/vehicle.pt'
-LP_MODEL_PATH = 'models/lp_yolo11_best.pt'
+VEHICLE_MODEL_PATH = 'models/vehiclev2.pt'
+LP_MODEL_PATH = 'models/lp.pt'
 OCR_MODEL_PATH = 'models/lp_ocr_yolo11.pt'
 HELMET_MODEL_PATH = 'models/best_helmet_end.pt'
 
-def get_detector_by_type(det_type, params=None):
+def get_detector_by_type(det_type, config=None):
     minio_client = MinIOManager()
     
     if det_type == "record":
@@ -26,28 +26,39 @@ def get_detector_by_type(det_type, params=None):
             minio_client=minio_client
         )
     
-    elif det_type == "light":
+
+    elif det_type == "all":
+        from .unified_detector import UnifiedDetector 
+        return UnifiedDetector(
+            vehicle_path=VEHICLE_MODEL_PATH,
+            helmet_path=HELMET_MODEL_PATH,
+            minio_client=minio_client,
+            config=config
+        )
+        
+    elif det_type == "red_light":
         from .light_detector import LightDetector
         return LightDetector(
             vehicle_path=VEHICLE_MODEL_PATH,
             minio_client=minio_client,
-            params=params
-        )    
-    elif det_type == "helmet":
+            config=config
+        )   
+
+    elif det_type == "no_helmet":
         from .helmet_detector import HelmetDetector
         return HelmetDetector(
             vehicle_path=VEHICLE_MODEL_PATH,
             helmet_path=HELMET_MODEL_PATH,
             minio_client=minio_client,
-            params=params
+            config=config
         )
 
-    elif det_type == "lane":
+    elif det_type == "wrong_lane":
         from .lane_detector import LaneDetector
         return LaneDetector(
             vehicle_path=VEHICLE_MODEL_PATH,
             minio_client=minio_client,
-            params=params
+            config=config
         )
     
     elif det_type == "lp":

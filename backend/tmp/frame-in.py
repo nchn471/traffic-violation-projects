@@ -1,119 +1,126 @@
 import cv2
 import uuid
 import os
+import tempfile
+from datetime import datetime
+from dotenv import load_dotenv
 
 from storage.minio_manager import MinIOManager
-from kafka_handlers.kafka_producer import KafkaAvroProducer 
-
-from dotenv import load_dotenv
-from datetime import datetime
+from kafka_handlers.kafka_producer import KafkaAvroProducer
+from storage.database import get_db_local
+from storage.models.camera import Camera
 
 load_dotenv()
 
+# ===== Config =====
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_EXTERNAL_SERVERS", "kafka:9092")
 SCHEMA_REGISTRY_URL = "http://localhost:8081"
-SCHEMA_SUBJECT = 'frames-in-value'
+SCHEMA_SUBJECT = "frames-in-value"
 
-def convert_point_list(points):
-    return [{"x": x, "y": y} for (x, y) in points]
+MINIO_CONFIG = {
+    "endpoint_url": "localhost:9000",
+    "aws_access_key_id": os.getenv("AWS_ACCESS_KEY_ID"),
+    "aws_secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
+    "bucket": os.getenv("MINIO_BUCKET"),
+}
 
-def prepare_params(params):
-    return {
-        "video": params["video"],
-        "location": params["location"],
-        "roi": convert_point_list(params["roi"]),
-        "stop_line": convert_point_list(params["stop_line"]),
-        "light_roi": convert_point_list(params["light_roi"]),
-        "detection_type": params["detection_type"],
-        "lanes": [
-            {
-                "id": lane["id"],
-                "polygon": convert_point_list(lane["polygon"]),
-                "allow_labels": lane["allow_labels"]
-            }
-            for lane in params["lanes"]
-        ]
-    }
 
-# === Kafka Avro Producer === #
+# ===== Kafka Producer =====
 def to_dict(obj, ctx):
-    return obj  # data đã là dict đúng schema
+    return obj
+
 
 producer = KafkaAvroProducer(
     brokers=KAFKA_BOOTSTRAP_SERVERS,
     schema_registry_url=SCHEMA_REGISTRY_URL,
     topic="frames-in",
     schema_registry_subject=SCHEMA_SUBJECT,
-    to_dict_func=to_dict
+    to_dict_func=to_dict,
 )
 
-# === Params chuẩn hóa === #
-raw_params = {
-    "video": "videos/La-Khê-Hà_Đông.mp4",
-    "location": "Lê Duẩn, Nguyễn Thái Học",
-    "roi": [(73, 718), (342, 330), (1061, 323), (1076, 331), (1019, 394), (1009, 453), (1026, 509), (1052, 572), (1096, 649), (1141, 717)],
-    "stop_line": [(154, 566), (1066, 541)],
-    "light_roi": [(650, 5), (700, 5), (700, 50), (650, 50)],
-    "detection_type": "light",
-    "lanes": [
-        {
-            "id": 1,
-            "polygon": [(76, 717), (274, 417), (543, 422), (492, 719)],
-            "allow_labels": ["car", "truck"]
-        },
-        {
-            "id": 2,
-            "polygon": [(492, 719), (543, 422), (758, 440), (790, 717)],
-            "allow_labels": ["motorcycle", "bicycle"]
-        },
-        {
-            "id": 3,
-            "polygon": [(790, 717), (758, 440), (1009, 429), (1172, 719)],
-            "allow_labels": ["car", "motorcycle", "truck", "bicycle"]
-        }
-    ]
-}
-prepared_params = prepare_params(raw_params)
 
-# === MinIO & Streaming === #
-MINIO_CONFIG = {
-    "endpoint_url": 'localhost:9000',
-    "aws_access_key_id": os.getenv('AWS_ACCESS_KEY_ID'),
-    "aws_secret_access_key": os.getenv('AWS_SECRET_ACCESS_KEY'),
-    "bucket": os.getenv("MINIO_BUCKET"),
-}
+# ===== Helper =====
+def resize_frame(frame, width=1280, height=720):
+    return cv2.resize(frame, (width, height))
 
-minio_client = MinIOManager(MINIO_CONFIG)
-video_path = minio_client.get_file(prepared_params['video'])
-cap = cv2.VideoCapture(video_path)
 
-session_id = str(uuid.uuid4())
-frame_skip = 5  # gửi 1 frame mỗi 5 frame
+def save_frame_to_minio(frame, camera_id, video_name, frame_index, minio_client):
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        cv2.imwrite(tmp.name, frame)
+        remote_path = f"frames-in/{camera_id}/{video_name}/frame_{frame_index}.jpg"
+        url = minio_client.upload_file(tmp.name, remote_path)
+    os.remove(tmp.name)
+    return url
 
-i = 0
-sent = 0
-while cap.isOpened():
-    ret, frame = cap.read()
-    if not ret:
-        break
 
-    if i % frame_skip == 0:
-        _, buffer = cv2.imencode(".jpg", frame)
-        encoded_frame = buffer.tobytes() 
-        message = {
-            "session_id": session_id,
-            "frame": encoded_frame,
-            "timestamp" : str(datetime.now()),
-            "params": prepared_params
-        }
-        producer.publish(value=message, key=session_id)
-        producer.producer.poll(0)
-        sent += 1
+# ===== Main Function =====
+def send_camera_video(camera_id: str, frame_skip=3, max_frames=500):
+    db = next(get_db_local())
+    camera_obj = db.get(Camera, camera_id)
 
-    i += 1
-    if sent > 500:
-        print("Stop, Enough Frame For Test")
-        break
+    if not camera_obj or not camera_obj.config or not camera_obj.config.get("video_url"):
+        raise ValueError("Camera not found or missing video_url")
 
-producer.producer.flush()
-print(f"Total Frames Read: {i}, Frames Sent: {sent}")
+    config = camera_obj.config
+    video_name = os.path.basename(config['video_url'])
+    
+    print(f"🎥 Camera: {camera_obj.name}, video_url: {config['video_url']}")
+
+    minio_client = MinIOManager(MINIO_CONFIG)
+    video_path = minio_client.get_file(config["video_url"])
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError("Could not open video")
+
+    session_id = str(uuid.uuid4())
+    print(f"📤 Session ID: {session_id}")
+    i = 0
+    sent = 0
+
+    try:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            if sent >= max_frames:
+                print(f"🛑 Stopped after sending {sent} frames.")
+                break
+
+            if i % frame_skip == 0:
+                frame = resize_frame(frame)
+                frame_url = save_frame_to_minio(frame, camera_id, video_name, sent + 1, minio_client)
+
+                message = {
+                    "session_id": session_id,
+                    "camera_id": camera_id,
+                    "frame_url": frame_url,
+                    "timestamp": int(datetime.now().timestamp() * 1000),
+                    **config,  # full config from camera
+                }
+
+                producer.publish(value=message, key=session_id)
+                producer.producer.poll(0)
+
+                print(f"[{i}] ✅ Sent frame {sent+1}: {frame_url}")
+                sent += 1
+
+            i += 1
+    finally:
+        cap.release()
+        os.remove(video_path)
+        producer.producer.flush()
+        print(f"✅ Done. Total frames read: {i}, frames sent: {sent}")
+
+
+if __name__ == "__main__":
+    # 💡 Nhập UUID camera ở đây
+    cam1 = "b9209722-f12e-4c2c-b6ec-230b15ca44b1"
+    cam2 = "8be6d3c5-dc29-4377-853e-8f0df9cf163b"
+    cam3 = "1d5e4b5f-91f3-42f7-b5ec-ec5476423ad9"
+    camera_id = cam1
+    frame_skip = 3
+    max_frames = 300
+
+    send_camera_video(camera_id=camera_id, frame_skip=frame_skip, max_frames=max_frames)

@@ -8,7 +8,7 @@ import {
   TabsTrigger,
 } from "@/components/shared/ui/tabs";
 import { AppHeader } from "@/components/shared/layout/app-header/app-header";
-import { MonitoringTab } from "@/components/features/monitoring/monitoring-tab";
+import { MonitoringTab } from "@/components/features/monitoring/components/monitoring-tab";
 import { DashboardTab } from "@/components/features/dashboard/dashboard-tab";
 import { ViolationListTab } from "@/components/features/violations/violation-list-tab/components/violation-list-tab";
 import { ManageOfficers } from "@/components/features/manage-officers/components/manage-officers";

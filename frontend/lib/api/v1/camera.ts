@@ -1,110 +1,48 @@
-export interface Camera {
-  id: string
-  name: string
-  location: string
-  folder_path: string
-  created_at: string
-  updated_at: string
-}
+import { apiFetch } from "@/lib/api/v1/fetch"
+import type { Camera, CameraUpdate } from "@/lib/types/api/v1/camera"
 
-const base_api_url = "/api/v1/cameras"
+const basePath = "/api/v1/cameras"
 
-function getAuthHeaders() {
-  const token = localStorage.getItem("access_token")
-  return {
-    "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
-  }
-}
 
-export async function getCameras(): Promise<Camera[]> {
-  const res = await fetch(`${base_api_url}/`, {
-    headers: getAuthHeaders(),
+export function getCameras(): Promise<Camera[]> {
+  return apiFetch<Camera[]>(`${basePath}/`, {
+    credentials: "include",
   })
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Failed to fetch cameras" }))
-    throw new Error(error.detail || "Failed to fetch cameras")
-  }
-
-  return res.json()
 }
 
-export async function getCamera(id: string): Promise<Camera> {
-  const res = await fetch(`${base_api_url}/${id}`, {
-    headers: getAuthHeaders(),
+
+export function getCamera(id: string): Promise<Camera> {
+  return apiFetch<Camera>(`${basePath}/${id}`, {
+    credentials: "include",
   })
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Failed to fetch camera" }))
-    throw new Error(error.detail || "Failed to fetch camera")
-  }
-
-  return res.json()
 }
 
-export async function createCamera(data: {
-  name: string
-  location: string
-  folder_path: string
-}): Promise<Camera> {
-  const res = await fetch(`${base_api_url}/`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify(data),
-  })
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Failed to create camera" }))
-    throw new Error(error.detail || "Failed to create camera")
-  }
-
-  return res.json()
-}
-
-export async function updateCamera(
-  id: string,
-  data: {
-    name?: string | null
-    location?: string | null
-    folder_path?: string | null
-  },
-): Promise<Camera> {
-  const res = await fetch(`${base_api_url}/${id}`, {
+export function updateCamera(id: string, data: CameraUpdate): Promise<Camera> {
+  return apiFetch<Camera>(`${basePath}/${id}`, {
     method: "PATCH",
-    headers: getAuthHeaders(),
-    body: JSON.stringify(data),
+    credentials: "include",
+    body: data,
   })
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Failed to update camera" }))
-    throw new Error(error.detail || "Failed to update camera")
-  }
-
-  return res.json()
 }
 
-export async function deleteCamera(id: string): Promise<void> {
-  const res = await fetch(`${base_api_url}/${id}`, {
-    method: "DELETE",
-    headers: getAuthHeaders(),
+export function getCameraVideos(cameraId: string): Promise<string[]> {
+  return apiFetch<string[]>(`${basePath}/${cameraId}/videos`, {
+    credentials: "include",
   })
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Failed to delete camera" }))
-    throw new Error(error.detail || "Failed to delete camera")
-  }
 }
 
-export async function getCameraVideos(cameraId: string): Promise<string[]> {
-  const res = await fetch(`${base_api_url}/${cameraId}/videos`, {
-    headers: getAuthHeaders(),
+export function sendFrames(
+  cameraId: string,
+  params?: { frame_skip?: number; max_frames?: number }
+): Promise<void> {
+  const query = new URLSearchParams()
+  if (params?.frame_skip !== undefined) query.set("frame_skip", String(params.frame_skip))
+  if (params?.max_frames !== undefined) query.set("max_frames", String(params.max_frames))
+
+  const queryString = query.toString() ? `?${query.toString()}` : ""
+
+  return apiFetch<void>(`${basePath}/${cameraId}/send-frames${queryString}`, {
+    method: "POST",
+    credentials: "include",
   })
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Failed to fetch camera videos" }))
-    throw new Error(error.detail || "Failed to fetch camera videos")
-  }
-
-  return res.json()
 }

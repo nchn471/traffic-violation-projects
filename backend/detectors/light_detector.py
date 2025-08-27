@@ -19,25 +19,26 @@ def is_red(frame, light_roi, threshold=0.008):
 
     red_ratio = np.sum(red_mask) / mask.size
     return red_ratio > threshold
-
-
+    
 class LightDetector(BaseDetector):
     def __init__(self, vehicle_path, minio_client, config):
         super().__init__(minio_client, config)
         self.model = self.load_model(vehicle_path)
         self.track_states = {}
         self.violation_status = {}
-
+        
     def detect(self, roi, frame):
+        
         results = self.model.track(
             source=roi,
             conf=0.3,
             tracker="bytetrack.yaml",
-            imgsz=320,
+            imgsz=640,
             persist=True,
             stream=False,
             verbose=False
-        )[0]    
+        )[0]
+
         violations = []
         original_frame = np.copy(frame)
         light_roi = self.config['light_roi']
@@ -46,13 +47,22 @@ class LightDetector(BaseDetector):
         light_color = self.RED_BGR if is_red_light else self.GREEN_BGR
 
         cv2.polylines(frame, [np.array(light_roi, dtype=np.int32)], True, light_color, 2)
-        cv2.putText(frame, f"Light: {light_label}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, light_color, 2)
-
+        
+        self.draw_label_top_left(
+            frame,
+            f"Light: {light_label}",
+            line=0,
+            text_color=light_color,
+            background_color=self.BLACK_BGR
+        )
+        
         stop_line = self.config['stop_line']
         cv2.line(frame, stop_line[0], stop_line[1], self.YELLOW_BGR, 2)
-        y_line = (stop_line[0][1] + stop_line[1][1]) // 2
-        y_buffer = 30
 
+        stop_line = (stop_line[0][1] + stop_line[1][1]) // 2
+        stop_buffer = 30
+        if not results or not results.boxes:
+            return {"frame": frame, "violations": []}
 
         for box in results.boxes:
             if box.id is None:
@@ -63,62 +73,84 @@ class LightDetector(BaseDetector):
             cls_id = int(box.cls[0])
             vehicle_type = self.model.names[cls_id]
             confidence = float(box.conf[0])
+            track_id = int(box.id[0])
 
-            center_y = (y1 + y2) // 2
-
-            status = self.violation_status.get(track_id, None)
-            VIOLATION_LABEL = 'Red Light Violation'
-            NO_VIOLATION_LABEL = 'No Violation'
-            label = None
+            vehicle_centroid = (y1 + y2) // 2
             
-            if status:
-                label = VIOLATION_LABEL if status == True else NO_VIOLATION_LABEL
+            VIOLATION_LABEL = "cross red light"
+
+            is_violated = self.violation_status.get(track_id)
+            label = None
+
+            if is_violated:
+                label = VIOLATION_LABEL
+
             else:
-                initial_state = self.track_states.get(track_id)
-                if not initial_state:
-                    if center_y > (y_line + y_buffer):
-                        self.violation_status[track_id] = False
-                        label = NO_VIOLATION_LABEL
-                        
-                    elif center_y < (y_line - y_buffer) and is_red_light:
-                        self.violation_status[track_id] = True 
-                        label = VIOLATION_LABEL
-                    else:
-                        self.track_states[track_id] = is_red_light
-                else:
-                    if center_y > (y_line + y_buffer):
-                        self.violation_status[track_id] = True if self.track_states[track_id] else False
-                        label = VIOLATION_LABEL if self.violation_status[track_id] else NO_VIOLATION_LABEL
-                    elif center_y < (y_line - y_buffer) and is_red_light:
+                # Trạng thái đèn lúc lần đầu gặp xe
+                initial_red_light = self.track_states.get(track_id)
+
+                if initial_red_light is None:
+                    # Lần đầu gặp track_id
+                    if vehicle_centroid > (stop_line + stop_buffer):
+                        # Xe đã ở dưới vạch dừng
+                        pass
+
+                    elif vehicle_centroid < (stop_line - stop_buffer) and is_red_light:
+                        # Xe vượt vạch dừng khi đèn đỏ
                         self.violation_status[track_id] = True
                         label = VIOLATION_LABEL
+
                     else:
+                        # Xe ở trong vùng [stop_line - stop_buffer, stop_line + stop_buffer]
                         self.track_states[track_id] = is_red_light
 
+                else:
+                    # Đã biết trạng thái đèn ban đầu của xe này
+                    if vehicle_centroid > (stop_line + stop_buffer):
+                        #  Xe từ vùng  [stop_line - stop_buffer, stop_line + stop_buffer] xuống dưới vạch và trạng thái đèn gần nhất là đỏ
+                        if initial_red_light is True:
+                            self.violation_status[track_id] = True
+                            label = VIOLATION_LABEL
+
+                    elif vehicle_centroid < (stop_line - stop_buffer) and is_red_light:
+                        # Xe trên vạch và đèn đỏ
+                        self.violation_status[track_id] = True
+                        label = VIOLATION_LABEL
+
+                    else:
+                        # Cập nhật lại trạng thái đèn gần nhất
+                        self.track_states[track_id] = is_red_light
+
+            # Gán nhãn cuối cùng để hiển thị
+            text = f"#{track_id} {vehicle_type} {int(confidence * 100)}%"
+            if label:
+                text += f" - {label}"
+                
             color = self.RED_BGR if label == VIOLATION_LABEL else self.GREEN_BGR
-            self.draw_bounding_box(frame, x1, y1, x2, y2, color=color, label=label)
+            self.draw_bounding_box(frame, x1, y1, x2, y2, color=color, label=text)
 
             if label == VIOLATION_LABEL and track_id not in self.violated_ids:
                 self.violated_ids.add(track_id)
-
 
                 frame_copy = np.copy(original_frame)
                 vehicle_img = frame_copy[y1:y2, x1:x2]
 
                 self.draw_bounding_box(frame_copy, x1, y1, x2, y2, color=color, label=label)
 
+                violation = self.track_violation(
+                    session_id=self.config.get("session_id"),
+                    camera_id=self.config.get("camera_id"),
+                    violation_type="red_light",
+                    confidence=confidence,
+                    vehicle_type=vehicle_type,
+                    frame_img=frame_copy,
+                    vehicle_img=vehicle_img,
+                )
 
-                violation = {
-                    "violation_type" : "red_light",
-                    "vehicle_type" : vehicle_type,
-                    "confidence" : confidence,
-                    "camera_id" : self.config.get("camera_id"),
-                    "violation_frame" : frame_copy,
-                    "vehicle_frame" : vehicle_img,
-                }
                 violations.append(violation)
-                
+
         return {
-            "frame" : frame,
-            "violations" : violations
+            "frame": frame,
+            "violations": violations
         }
+

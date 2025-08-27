@@ -29,3 +29,13 @@ def get_db():
         yield db
     finally:
         db.close()
+
+engine_local = create_engine(DATABASE_URL_LOCAL)
+SessionLocal2 = sessionmaker(autocommit=False, autoflush=False, bind=engine_local)
+def get_db_local():
+
+    db = SessionLocal2()
+    try:
+        yield db
+    finally:
+        db.close()

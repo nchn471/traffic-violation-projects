@@ -2,14 +2,12 @@ from core.base_detector import BaseDetector
 import numpy as np
 
 class HelmetDetector(BaseDetector):
-
     def __init__(self, vehicle_path, helmet_path, minio_client, config):
         super().__init__(minio_client, config)
         self.vehicle_detector = self.load_model(vehicle_path)
         self.helmet_detector = self.load_model(helmet_path)
 
     def detect(self, roi, frame):
-
         detection_results = self.vehicle_detector.track(
             source=roi,
             conf=0.3,
@@ -20,27 +18,23 @@ class HelmetDetector(BaseDetector):
             tracker="bytetrack.yaml"
         )[0]
 
+        if not hasattr(detection_results, "boxes") or detection_results.boxes is None:
+            return {"frame": frame, "violations": []}
+
+        motorbike_cls_id = next(
+            (k for k, v in self.vehicle_detector.names.items() if v == "motorbike"), None
+        )
+
         original_frame = np.copy(frame)
         violations = []
-        
-        if not hasattr(detection_results, "boxes") or detection_results.boxes is None:
-            return
-        
-        motorbike_cls_id = next((k for k, v in self.vehicle_detector.names.items() if v == "motorcycle"), None)
-        
+
         for box in detection_results.boxes:
-            if box.id is None:
+            if box.id is None or int(box.cls[0]) != motorbike_cls_id:
                 continue
 
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             track_id = int(box.id[0])
-            # conf = float(box.conf[0])
-            cls_id = int(box.cls[0])
-            
-            vehicle_type = self.vehicle_detector.names[cls_id]
-            
-            if cls_id != motorbike_cls_id:
-                continue
+            vehicle_type = self.vehicle_detector.names[int(box.cls[0])]
 
             vehicle_img = roi[y1:y2, x1:x2]
             if vehicle_img.size == 0:
@@ -61,6 +55,7 @@ class HelmetDetector(BaseDetector):
                 color = self.GREEN_BGR if label == "Helmet" else self.RED_BGR
                 text = f"#{track_id} {label} {int(helmet_conf * 100)}%"
 
+                # Draw on current frame
                 self.draw_bounding_box(frame, x1, y1, x2, y2, color, text)
                 self.draw_bounding_box(
                     frame,
@@ -72,11 +67,10 @@ class HelmetDetector(BaseDetector):
                 )
 
                 if helmet_conf > 0.65 and label == "Without Helmet" and track_id not in self.violated_ids:
-                    
                     self.violated_ids.add(track_id)
 
+                    # Draw on violation copy
                     frame_copy = np.copy(original_frame)
-
                     self.draw_bounding_box(frame_copy, x1, y1, x2, y2, color, text)
                     self.draw_bounding_box(
                         frame_copy,
@@ -86,18 +80,17 @@ class HelmetDetector(BaseDetector):
                         font_scale=0.25,
                         thickness=1
                     )
-                    
-                    violation = {
-                        "camera_id" : self.config.get("camera_id"),
-                        "violation_type" : "no_helmet",
-                        "vehicle_type" : vehicle_type,
-                        "confidence" : helmet_conf,
-                        "violation_frame" : frame_copy,
-                        "vehicle_frame" : vehicle_img,
-                    }
+
+                    violation = self.track_violation(
+                        session_id=self.config.get("session_id"),
+                        camera_id=self.config.get("camera_id"),
+                        violation_type="no_helmet",
+                        confidence=helmet_conf,
+                        vehicle_type=vehicle_type,
+                        frame_img=frame_copy,
+                        vehicle_img=vehicle_img,
+                    )
+
                     violations.append(violation)
 
-        return {
-            "frame" : frame,
-            "violations" : violations
-        }
+        return {"frame": frame, "violations": violations}

@@ -2,12 +2,14 @@ from uuid import UUID
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
+from typing import Dict, Any
 
 
 class CameraBase(BaseModel):
     name: str
-    location: str
+    location: Optional[str]
     folder_path: str
+    config: Optional[Dict[str, Any]]
 
 
 class CameraCreate(CameraBase):
@@ -15,9 +17,10 @@ class CameraCreate(CameraBase):
 
 
 class CameraUpdate(BaseModel):
-    name: Optional[str]
-    location: Optional[str]
-    folder_path: Optional[str]
+    name: Optional[str] = None
+    location: Optional[str] = None
+    folder_path: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
 
 
 class CameraOut(CameraBase):
@@ -25,7 +28,8 @@ class CameraOut(CameraBase):
     created_at: datetime
     updated_at: datetime
 
-
     model_config = {
         "from_attributes": True
     }
+
+

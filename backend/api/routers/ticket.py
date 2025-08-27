@@ -266,50 +266,55 @@ def mark_ticket_paid(
     return ticket
 
 @ticket_router.get("/{ticket_id}/pdf", dependencies=[Depends(require_all)])
-def get_ticket_pdf(
-    ticket_id: UUID,
-    db: Session = Depends(get_db)
-):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+def download_ticket_pdf(ticket_id: UUID, db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter_by(id=ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket không tồn tại")
 
-    violation = db.query(Violation).filter(Violation.id == ticket.violation_id).first()
+    violation = db.query(Violation).filter_by(id=ticket.violation_id).first()
     if not violation:
         raise HTTPException(status_code=404, detail="Violation không tồn tại")
 
-    pdf_file = create_pdf_ticket(ticket, violation)
-
+    pdf_bytes = create_pdf_ticket(ticket, violation)
     filename = f"ticket_{ticket.id}.pdf"
+
     return StreamingResponse(
-        io.BytesIO(pdf_file),
+        io.BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'}
-    )    
+    )
+
 
 @ticket_router.post("/{ticket_id}/send", response_model=TicketOut)
-def send_ticket_email(
+def send_ticket_via_email(
     ticket_id: UUID,
     db: Session = Depends(get_db),
-    officer: dict = Depends(require_all)
+    officer: dict = Depends(require_all),
 ):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    ticket = db.query(Ticket).filter_by(id=ticket_id).first()
     if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
+        raise HTTPException(status_code=404, detail="Ticket không tồn tại")
 
-    violation = db.query(Violation).filter(Violation.id == ticket.violation_id).first()
+    violation = db.query(Violation).filter_by(id=ticket.violation_id).first()
     if not violation:
-        raise HTTPException(status_code=404, detail="Violation not found")
+        raise HTTPException(status_code=404, detail="Violation không tồn tại")
 
     if ticket.status != "draft":
-        raise HTTPException(status_code=400, detail="Only can send draft's ticket")
+        raise HTTPException(status_code=400, detail="Chỉ có thể gửi ticket ở trạng thái 'draft'")
 
-    pdf_file = create_pdf_ticket(ticket, violation)
-    html = build_ticket_html(ticket, violation)
-    send_email(ticket.email, "Traffic Violation Ticket", html, pdf_file)
+    try:
+        pdf_bytes = create_pdf_ticket(ticket, violation)
+        send_email(
+            to_email=ticket.email,
+            subject="Traffic Violation Ticket",
+            ticket=ticket,
+            violation=violation,
+            attachment=pdf_bytes,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi gửi email: {str(e)}")
 
     ticket.status = "sent"
-
     version = TicketVersion(
         ticket_id=ticket.id,
         officer_id=officer.id,
@@ -320,12 +325,13 @@ def send_ticket_email(
         email=ticket.email,
         notes=ticket.notes,
         status=ticket.status,
-        source_id=ticket.version_id
+        source_id=ticket.version_id,
     )
+
     db.add(version)
     db.flush()
-
     ticket.version_id = version.id
     db.commit()
     db.refresh(ticket)
+
     return ticket

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List, Optional
 from sqlalchemy import or_, cast, String
+from sqlalchemy import func
 
 from storage.models import Violation, ViolationVersion, Camera
 from api.schemas.violation import (
@@ -39,7 +40,12 @@ def get_violations(
     search: Optional[str] = Query(None),  
 ):
     query = db.query(Violation)
-
+    query = query.filter(
+        or_(
+            # Violation.violation_type == "red_light",  # Giữ lại red_light, bất kể biển số
+            func.lower(Violation.license_plate) != "unknown"  # Với các loại khác thì bỏ unknown
+        )
+    )
     if status is None:
         query = query.filter(Violation.status != "archived")
     elif status != "all":
@@ -88,8 +94,13 @@ def get_violations(
     total_pages = (total + limit - 1) // limit
     skip = (page - 1) * limit
 
-    violations = query.offset(skip).limit(limit).all()
-
+    violations = (
+        query
+        .order_by(Violation.timestamp.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return PaginatedViolations(
         pagination=Pagination(
             page=page,

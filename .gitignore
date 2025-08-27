@@ -3,3 +3,13 @@ data
 backend/model
 backend/video
 fe
+.envv
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+.DS_Store
+.vscode
+.idea       
+backend/tmp

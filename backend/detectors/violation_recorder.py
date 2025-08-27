@@ -11,11 +11,6 @@ class ViolationRecorder(LicensePlateDetector):
         super().__init__(lp_path, ocr_path, minio_client)
         self.db = db
         
-    def _save_temp_image(self, image, filename, tmpdir):
-        path = os.path.join(tmpdir, filename)
-        cv2.imwrite(path, image)
-        return path
-    
     def save_violation_snapshot(self, data: dict):
         print(data)
         try:
@@ -30,16 +25,16 @@ class ViolationRecorder(LicensePlateDetector):
                 frame_img_url = data.get("frame_img_url")
                 timestamp = data.get("timestamp")
                 vehicle_img_path = self.minio_client.get_file(vehicle_img_url, tmpdir)
-                print(vehicle_img_path)
                 vehicle_img = cv2.imread(vehicle_img_path)
-                lp_img, lp_text = self.lp_recognition(vehicle_img)
+                # lp_img, lp_text = self.lp_recognition(vehicle_img)
+                # base_path = f"violations/{violation_id}"
+                # lp_path_local = self.save_temp_image(lp_img, "lp.jpg", tmpdir) if lp_img is not None else None
+                # lp_path = self.minio_client.upload_file(lp_path_local, f"{base_path}/lp.jpg") if lp_path_local else None
+                lp_path = None
+                lp_text = "unknown"
 
-                    
+
                 version_id = str(uuid.uuid4())
-                base_path = f"violations/{violation_id}"
-                lp_path_local = self._save_temp_image(lp_img, "lp.jpg", tmpdir) if lp_img is not None else None
-                lp_path = self.minio_client.upload_file(lp_path_local, f"{base_path}/lp.jpg") if lp_path_local else None
-
                 violation = Violation(
                     id=violation_id,
                     camera_id=camera_id,
@@ -60,7 +55,7 @@ class ViolationRecorder(LicensePlateDetector):
                 version = ViolationVersion(
                     id=version_id,
                     violation_id=violation_id,
-                    officer_id=None,
+                    officer_id="e02baf3e-69b0-4642-b159-083f934817ca",
                     timestamp=timestamp,
                     vehicle_type=vehicle_type,
                     violation_type=violation_type,
@@ -70,7 +65,9 @@ class ViolationRecorder(LicensePlateDetector):
                     vehicle_image_path=vehicle_img_url,
                     lp_image_path=lp_path,
                     updated_at=timestamp,
-                    change_type="create"
+                    change_type="create",
+                    status="pending",
+
                 )
                 self.db.add(version)
                 self.db.flush()

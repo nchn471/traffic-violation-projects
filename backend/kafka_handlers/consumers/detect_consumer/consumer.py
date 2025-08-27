@@ -1,14 +1,15 @@
 import os
 import cv2
+import tempfile
 from dotenv import load_dotenv
+from datetime import datetime
+import traceback
 
 from detectors import get_detector_by_type
 from core.frame_processor import FrameProcessor
 from storage.minio_manager import MinIOManager
-
 from ...kafka_consumer import KafkaAvroConsumer
 from ...kafka_producer import KafkaAvroProducer
-
 
 def convert_point(point_dict):
     if isinstance(point_dict, dict) and 'x' in point_dict and 'y' in point_dict:
@@ -30,9 +31,10 @@ def convert_config(config):
     return config
 
 def from_dict(obj, ctx):
-    if isinstance(obj, dict) and 'config' in obj:
-        obj['config'] = convert_config(obj['config'])
+    if isinstance(obj, dict):
+        obj = convert_config(obj)
     return obj
+
 
 class DetectConsumer(KafkaAvroConsumer):
     def __init__(self, config, topics, schema_registry_url, subject):
@@ -49,103 +51,62 @@ class DetectConsumer(KafkaAvroConsumer):
 
         self.minio_client = MinIOManager()
         self.detector_cache = {}
-        self.frame_counters = {}  
-        
-    def get_next_frame_index(self, session_id):
-        self.frame_counters.setdefault(session_id, 0)
-        self.frame_counters[session_id] += 1
-        return self.frame_counters[session_id]
+        self.frame_counters = {}
 
     def process_message(self, data: dict):
         try:
-            session_id = data.get("session_id")
-            camera_id = data.get("camera_id")
-            frame_url = data.get("frame_url")
-            timestamp = data.get("timestamp")
-            config = data.get("config")
+            with tempfile.TemporaryDirectory() as tmpdir:
+                session_id = data.get("session_id")
+                camera_id = data.get("camera_id")
+                frame_url = data.get("frame_url")
+                video_url = data.get("video_url")
+                video_name = os.path.basename(video_url) if video_url else None
 
-            if not all([session_id, camera_id, frame_url, config]):
-                print("Missing required fields in message.")
-                return
+                # Download and load frame
+                frame_path = self.minio_client.get_file(frame_url, tmpdir)
+                frame = cv2.imread(frame_path)
 
-            # Load frame
-            local_path = self.minio_client.get_file(frame_url)
-            frame = cv2.imread(local_path)
-            if frame is None:
-                print(f"Failed to read frame from {local_path}")
-                return
+                # Extract frame_name from URL
+                frame_name = os.path.basename(frame_url)
 
-            frame_index = self.get_next_frame_index(session_id)
+                # Get or create detector
+                detection_type = data.get("detection_type")
+                if session_id not in self.detector_cache:
+                    self.detector_cache[session_id] = get_detector_by_type(detection_type, data)
+                detector = self.detector_cache[session_id]
 
-            # Get or create detector
-            detection_type = config.get("detection_type", "default")
-            if session_id not in self.detector_cache:
-                self.detector_cache[session_id] = get_detector_by_type(detection_type, config)
-            detector = self.detector_cache[session_id]
+                # Process frame
+                processor = FrameProcessor(detector, data['roi'])
+                output = processor.process(frame)
+                processed_frame = output.get("frame")
+                violations = output.get("violations", [])
 
-            # Process
-            processor = FrameProcessor(detector, config)
-            output = processor.process(frame)
-            processed_frame = output.get("frame")
-            violations = output.get("violations", [])
+                # Upload processed frame
+                tmp_proc_path = os.path.join(tmpdir, frame_name)
+                cv2.imwrite(tmp_proc_path, processed_frame)
+                minio_proc_path = f"frames-out/{camera_id}/{video_name}/{frame_name}"
+                self.minio_client.upload_file(tmp_proc_path, minio_proc_path)
 
-            # Save + upload processed frame
-            tmp_proc = f"/tmp/{session_id}_frame_{frame_index}.jpg"
-            cv2.imwrite(tmp_proc, processed_frame)
-            minio_proc_path = f"frames-out/{camera_id}/{session_id}_frame_{frame_index}.jpg"
-            self.minio_client.upload_file(tmp_proc, minio_proc_path)
-            os.remove(tmp_proc)
 
-            # Publish FrameOut
-            self.ws_producer.publish({
-                "session_id": session_id,
-                "camera_id": camera_id,
-                "timestamp": timestamp,
-                "processed_frame_url": minio_proc_path
-            }, key=session_id)
-
-            # Publish Violations
-            for idx, v in enumerate(violations):
-                violation_id = f"{session_id}_f{frame_index}_v{idx}"
-                violation_type = v.get("violation_type", "")
-                vehicle_type = v.get("vehicle_type", "")
-                confidence = float(v.get("confidence", 0.0))
-
-                violation_url = ""
-                vehicle_url = ""
-
-                # Violation frame
-                if v.get("violation_frame") is not None:
-                    tmp_vf = f"/tmp/violation_{violation_id}.jpg"
-                    cv2.imwrite(tmp_vf, v["violation_frame"])
-                    violation_url = f"violations/{session_id}/violation_{violation_id}.jpg"
-                    self.minio_client.upload_file(tmp_vf, violation_url)
-                    os.remove(tmp_vf)
-
-                # Vehicle frame
-                if v.get("vehicle_frame") is not None:
-                    tmp_vh = f"/tmp/vehicle_{violation_id}.jpg"
-                    cv2.imwrite(tmp_vh, v["vehicle_frame"])
-                    vehicle_url = f"violations/{session_id}/vehicle_{violation_id}.jpg"
-                    self.minio_client.upload_file(tmp_vh, vehicle_url)
-                    os.remove(tmp_vh)
-
-                self.violation_producer.publish({
+                self.ws_producer.publish({
+                    "session_id": session_id,
                     "camera_id": camera_id,
-                    "violation_type": violation_type,
-                    "vehicle_type": vehicle_type,
-                    "confidence": confidence,
-                    "timestamp": str(timestamp),
-                    "violation_frame_url": violation_url.encode(),
-                    "vehicle_frame_url": vehicle_url.encode()
+                    "timestamp": int(datetime.now().timestamp() * 1000),
+                    "processed_frame_url": minio_proc_path
                 }, key=session_id)
 
-            # Flush all in one go
-            self.ws_producer.producer.poll(0)
-            self.violation_producer.producer.poll(0)
+                # Publish violations
+                for violation in violations:
+                    self.violation_producer.publish(violation, key=session_id)
+
+                # Flush producers
+                self.ws_producer.producer.poll(0)
+                self.violation_producer.producer.poll(0)
 
         except Exception as e:
-            print(f"Error processing message: {e}")
+            print(f"[ERROR] Failed to process message: {e}")
+            traceback.print_exc()
+
 
 # ------------------------- Entrypoint ------------------------
 

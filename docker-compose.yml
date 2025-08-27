@@ -146,6 +146,7 @@ services:
       - .env
     networks:
       - violation-net
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 
     depends_on:
       postgres:
         condition: service_started
